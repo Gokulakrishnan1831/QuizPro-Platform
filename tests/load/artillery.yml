@@ -1,0 +1,119 @@
+config:
+  target: 'http://localhost:3000'
+  http:
+    timeout: 30
+  phases:
+    # Warm-up — ramp from 0 to 10 users over 60s
+    - name: Warm-up
+      duration: 60
+      arrivalRate: 2
+      rampTo: 10
+
+    # Sustained load — 50 concurrent users for 3 minutes
+    - name: Sustained Load
+      duration: 180
+      arrivalRate: 50
+
+    # Peak spike — 100 concurrent users for 60s
+    - name: Peak Spike
+      duration: 60
+      arrivalRate: 100
+
+  plugins:
+    expect: {}
+
+  environments:
+    production:
+      target: 'https://your-production-domain.com'
+
+# Payload for authenticated quiz completion
+payload:
+  - path: './tests/load/quiz-answers.csv'
+    fields:
+      - quizId
+      - answers
+
+scenarios:
+  # ── 1. Homepage ───────────────────────────────────────────────
+  - name: 'Load Homepage'
+    weight: 20
+    flow:
+      - get:
+          url: '/'
+          expect:
+            - statusCode: 200
+
+  # ── 2. Pricing page ───────────────────────────────────────────
+  - name: 'View Pricing'
+    weight: 15
+    flow:
+      - get:
+          url: '/pricing'
+          expect:
+            - statusCode: 200
+
+  # ── 3. Leaderboard ───────────────────────────────────────────
+  - name: 'Leaderboard'
+    weight: 15
+    flow:
+      - get:
+          url: '/api/leaderboard?skill=ALL&limit=25'
+          expect:
+            - statusCode: 200
+            - contentType: json
+
+  # ── 4. Admin Stats ────────────────────────────────────────────
+  - name: 'Admin Stats API'
+    weight: 10
+    flow:
+      - get:
+          url: '/api/admin/stats'
+          expect:
+            - statusCode:
+                - 200
+                - 401
+                - 403
+
+  # ── 5. Quiz Start API ─────────────────────────────────────────
+  - name: 'Quiz Start API'
+    weight: 20
+    flow:
+      - post:
+          url: '/api/quiz/start'
+          json:
+            skill: 'SQL'
+            difficulty: 5
+            persona: 'FRESHER'
+          expect:
+            - statusCode:
+                - 200
+                - 401
+                - 402
+
+  # ── 6. AI Generate Quiz ───────────────────────────────────────
+  - name: 'AI Generate Quiz'
+    weight: 10
+    flow:
+      - post:
+          url: '/api/ai/generate'
+          json:
+            skill: 'SQL'
+            persona: 'FRESHER'
+            difficulty: 5
+            count: 5
+          expect:
+            - statusCode:
+                - 200
+                - 401
+                - 402
+
+  # ── 7. Dashboard API ──────────────────────────────────────────
+  - name: 'Dashboard API'
+    weight: 10
+    flow:
+      - get:
+          url: '/api/dashboard'
+          expect:
+            - statusCode:
+                - 200
+                - 401

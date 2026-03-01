@@ -1,51 +1,58 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
 
+/**
+ * GET /api/subscriptions/checkout
+ *
+ * Returns available subscription tiers. These are defined in the plan
+ * and don't need their own DB table – they're static configuration.
+ * Razorpay integration will be added in Phase 7.
+ */
 export async function GET() {
-  try {
-    const packages = await prisma.package.findMany({
-      where: { isActive: true },
-      orderBy: { sortOrder: 'asc' }
-    });
+  const tiers = [
+    {
+      id: 'FREE',
+      name: 'Free',
+      price: 0,
+      quizzes: 1,
+      features: ['1 teaser quiz', 'MCQs only'],
+      isPopular: false,
+    },
+    {
+      id: 'BASIC',
+      name: 'Basic',
+      price: 99,
+      quizzes: 3,
+      features: ['3 quizzes', 'MCQs only', 'Basic reports'],
+      isPopular: false,
+    },
+    {
+      id: 'PRO',
+      name: 'Pro',
+      price: 299,
+      quizzes: 10,
+      features: [
+        '10 quizzes',
+        'Full hands-on (SQL, Excel, Python)',
+        'AI-powered reports',
+        'Leaderboard access',
+      ],
+      isPopular: true,
+    },
+    {
+      id: 'ELITE',
+      name: 'Elite',
+      price: 499,
+      quizzes: 20,
+      features: [
+        '20 quizzes',
+        'Everything in Pro',
+        '1:1 Mentorship session',
+        'Unlimited retries',
+        'Priority support',
+      ],
+      isPopular: false,
+    },
+  ];
 
-    // If no packages exist, return default ones
-    if (packages.length === 0) {
-      return NextResponse.json([
-        {
-          id: 'starter',
-          name: 'Starter',
-          slug: 'starter',
-          price: 49,
-          originalPrice: 99,
-          durationDays: 7,
-          features: JSON.stringify(['Unlimited practice', 'Basic analytics', '7-day access']),
-          isPopular: false
-        },
-        {
-          id: 'popular',
-          name: 'Popular',
-          slug: 'popular',
-          price: 149,
-          originalPrice: 299,
-          durationDays: 30,
-          features: JSON.stringify(['+ AI questions', 'Detailed analytics', '30-day access']),
-          isPopular: true
-        },
-        {
-          id: 'pro',
-          name: 'Pro',
-          slug: 'pro',
-          price: 349,
-          originalPrice: 699,
-          durationDays: 90,
-          features: JSON.stringify(['+ Priority support', 'Exclusive content', '90-day access']),
-          isPopular: false
-        }
-      ]);
-    }
-
-    return NextResponse.json(packages);
-  } catch (error) {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
+  return NextResponse.json(tiers);
 }

@@ -1,45 +1,43 @@
 import { NextResponse } from 'next/server';
-import bcrypt from 'bcryptjs';
-import prisma from '@/lib/prisma';
+import { createClient } from '@/lib/supabase/server';
 
+/**
+ * POST /api/auth/login
+ *
+ * Server-side email+password login via Supabase Auth.
+ * This route exists for programmatic / API consumers.
+ * The browser login page uses the client-side Supabase SDK directly.
+ */
 export async function POST(request: Request) {
   try {
-    const { name, email, password, status } = await request.json();
+    const { email, password } = await request.json();
 
-    if (!name || !email || !password) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    if (!email || !password) {
+      return NextResponse.json(
+        { error: 'Email and password are required' },
+        { status: 400 },
+      );
     }
 
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
+    const supabase = await createClient();
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
     });
 
-    if (existingUser) {
-      return NextResponse.json({ error: 'User already exists' }, { status: 400 });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 401 });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 12);
-
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-        password: hashedPassword,
-        status: status || 'student',
-      },
-    });
-
-    // In a real app, you'd generate a JWT here. 
-    // For this implementation, we'll return the user object.
-    const { password: _, ...userWithoutPassword } = user;
-
-    return NextResponse.json({ 
-      user: userWithoutPassword,
-      token: 'mock-jwt-token' // Placeholder for actual JWT
-    }, { status: 201 });
-
+    return NextResponse.json(
+      { user: data.user, session: data.session },
+      { status: 200 },
+    );
   } catch (error: any) {
-    console.error('Signup error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('Login API error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 },
+    );
   }
 }

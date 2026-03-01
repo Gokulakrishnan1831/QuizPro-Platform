@@ -1,57 +1,32 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
 
-export async function GET(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
+/**
+ * GET /api/skills
+ *
+ * Returns the available skills and question types.
+ * These are defined as enums in the schema so this is essentially static.
+ */
+export async function GET() {
+  const skills = [
+    {
+      id: 'EXCEL',
+      name: 'Excel',
+      description: 'Formulas, pivot tables, data analysis, VBA',
+      types: ['MCQ', 'EXCEL_HANDS_ON'],
+    },
+    {
+      id: 'SQL',
+      name: 'SQL',
+      description: 'Queries, joins, aggregations, window functions',
+      types: ['MCQ', 'SQL_HANDS_ON'],
+    },
+    {
+      id: 'POWERBI',
+      name: 'Power BI',
+      description: 'DAX, data modeling, visualizations, dashboards',
+      types: ['MCQ', 'POWERBI_FILL_BLANK'],
+    },
+  ];
 
-    if (!userId) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
-    }
-
-    // Fetch user stats
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        progress: {
-          include: { skill: true }
-        },
-        streaks: true,
-        quizSessions: {
-          orderBy: { startedAt: 'desc' },
-          take: 5
-        }
-      }
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    // Calculate aggregate stats
-    const totalQuestions = user.progress.reduce((acc, p) => acc + p.totalAttempted, 0);
-    const totalCorrect = user.progress.reduce((acc, p) => acc + p.totalCorrect, 0);
-    const overallAccuracy = totalQuestions > 0 ? (totalCorrect / totalQuestions) * 100 : 0;
-
-    const stats = {
-      totalQuestions,
-      accuracy: Math.round(overallAccuracy),
-      streak: user.streaks?.currentStreak || 0,
-      xp: totalCorrect * 10, // Simple XP calculation
-      recentSessions: user.quizSessions,
-      skillProgress: user.progress.map(p => ({
-        skillName: p.skill.name,
-        accuracy: p.accuracy,
-        mastery: p.masteryLevel,
-        totalAttempted: p.totalAttempted
-      }))
-    };
-
-    return NextResponse.json(stats);
-
-  } catch (error) {
-    console.error('Dashboard API Error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
+  return NextResponse.json({ skills });
 }

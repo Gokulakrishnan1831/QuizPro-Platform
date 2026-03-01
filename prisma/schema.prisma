@@ -1,0 +1,190 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ──────────────────────────────────────────────────────────
+
+enum ProfileType {
+  FRESHER
+  EXPERIENCED
+}
+
+enum Persona {
+  SWITCHER
+  JOB_HOPPER
+  FRESHER
+}
+
+enum SubscriptionTier {
+  FREE
+  BASIC
+  PRO
+  ELITE
+}
+
+enum QuestionType {
+  MCQ
+  EXCEL_HANDS_ON
+  SQL_HANDS_ON
+  POWERBI_MCQ
+  PYTHON_HANDS_ON
+}
+
+enum Skill {
+  EXCEL
+  SQL
+  POWERBI
+  PYTHON
+}
+
+enum QuizGoal {
+  PRACTICE
+  INTERVIEW_PREP
+}
+
+// ─── Models ─────────────────────────────────────────────────────────
+
+/// Extends Supabase auth.users. The `id` here matches the Supabase auth UID.
+model User {
+  id               String           @id @default(uuid()) @db.Uuid
+  email            String           @unique
+  name             String?
+  profileType      ProfileType?
+  persona          Persona?
+  experienceYears  Int?
+  resumeUrl        String?          @db.Text
+  educationDetails Json?            // { degree, university, graduationYear, projects }
+  toolStack        Json?            // string[] — confirmed analytics tools the user wants to practice
+  quizGoal         QuizGoal?        // PRACTICE or INTERVIEW_PREP
+  upcomingCompany  String?
+  upcomingJD       String?          @db.Text
+  interviewDate    DateTime?
+  subscriptionTier SubscriptionTier @default(FREE)
+  quizzesRemaining Int              @default(1) // free tier = 1 teaser
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  quizAttempts QuizAttempt[]
+  progress     UserProgress[]
+
+  @@index([email])
+  @@index([profileType])
+}
+
+/// Standalone admin accounts — separate from regular users.
+model Admin {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([email])
+}
+
+/// A generated quiz instance. `questions` stores the full question array as JSONB
+/// so each attempt is an immutable snapshot of what the user saw.
+model Quiz {
+  id        String   @id @default(uuid()) @db.Uuid
+  persona   Persona
+  skill     Skill?   // single-skill quiz for leaderboard, null if mixed
+  quizGoal  QuizGoal @default(PRACTICE)
+  jdCompany String?
+  jdText    String?  @db.Text
+  timerMins Int      @default(30)
+  questions Json     // [{type, skill, content, options, correctAnswer, solution, difficulty, metadata}]
+  createdAt DateTime @default(now())
+
+  attempts QuizAttempt[]
+
+  @@index([persona, createdAt])
+  @@index([skill])
+}
+
+/// Reusable question bank – seeded manually or scraped.
+/// These are templates from which quizzes are assembled.
+model Question {
+  id            String       @id @default(uuid()) @db.Uuid
+  skill         Skill
+  type          QuestionType
+  content       String       @db.Text
+  options       Json?        // string[] for MCQ; null for hands-on
+  correctAnswer Json         // varies: string for MCQ, {query,expected} for SQL, etc.
+  solution      String       @db.Text
+  difficulty    Int          @default(5) // 1-10
+  metadata      Json?        // test cases, sample data, schema defs, etc.
+  createdAt     DateTime     @default(now())
+
+  @@index([skill, type, difficulty])
+}
+
+/// One user's attempt at one quiz.
+model QuizAttempt {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  quizId       String   @db.Uuid
+  answers      Json     // [{questionIndex, userAnswer, confidence?, isCorrect}]
+  score        Decimal  @db.Decimal(5, 2)
+  timeTaken    Int      // seconds
+  wrongAnswers Json     // [{questionIndex, userAnswer, correctAnswer, explanation}]
+  aiSummary    String?  @db.Text
+  focusTopics  Json?    // string[] — weak topics identified by AI
+  rank         Int?     // percentile, computed async
+  completedAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@index([userId, completedAt])
+  @@index([quizId, score])
+}
+
+/// Aggregate per-skill accuracy for a user (updated after each attempt).
+model UserProgress {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  skill          Skill
+  totalAttempted Int      @default(0)
+  totalCorrect   Int      @default(0)
+  accuracy       Decimal  @db.Decimal(5, 2) @default(0)
+  lastPracticed  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, skill])
+  @@index([userId])
+}
+
+/// Pre-aggregated leaderboard per quiz category (updated by a cron / on-demand).
+/// Now segmented: e.g. "sql_fresher", "excel_experienced"
+model Leaderboard {
+  id          String      @id @default(uuid()) @db.Uuid
+  skill       Skill
+  profileType ProfileType
+  scores      Json        // [{anonymizedId, score, rank, name?}]
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([skill, profileType])
+}
+
+/// Cached synthetic databases generated by the LLM for SQL hands-on questions.
+/// Before generating a new dataset, the system checks this table for a reusable match.
+model SyntheticDatabase {
+  id          String   @id @default(uuid()) @db.Uuid
+  industry    String?  // e.g. "ecommerce", "healthcare", "finance"
+  difficulty  Int      @default(5) // 1-10
+  setupSQL    String   @db.Text   // CREATE TABLE + INSERT INTO statements
+  tableSummary String  @db.Text   // human-readable summary of what tables/columns exist
+  sampleData  Json     // [{tableName, rows: [...]}]
+  usageCount  Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([industry, difficulty])
+}

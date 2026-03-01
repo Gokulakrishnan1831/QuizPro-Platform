@@ -1,36 +1,31 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 
-interface User {
+interface UserProfile {
   id: string;
   email: string;
-  name: string;
-  role: string;
-  status: string;
+  name: string | null;
+  persona: 'SWITCHER' | 'JOB_HOPPER' | 'FRESHER' | null;
+  experienceYears: number | null;
+  subscriptionTier: 'FREE' | 'BASIC' | 'PRO' | 'ELITE';
+  quizzesRemaining: number;
 }
 
 interface AuthState {
-  user: User | null;
-  token: string | null;
+  user: UserProfile | null;
   isAuthenticated: boolean;
-  setAuth: (user: User, token: string) => void;
+  isLoading: boolean;
+  setUser: (user: UserProfile | null) => void;
+  setLoading: (loading: boolean) => void;
   logout: () => void;
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set) => ({
-      user: null,
-      token: null,
-      isAuthenticated: false,
-      setAuth: (user, token) => set({ user, token, isAuthenticated: true }),
-      logout: () => {
-        set({ user: null, token: null, isAuthenticated: false });
-        localStorage.removeItem('auth-storage');
-      },
-    }),
-    {
-      name: 'auth-storage',
-    }
-  )
-);
+export const useAuthStore = create<AuthState>()((set) => ({
+  user: null,
+  isAuthenticated: false,
+  isLoading: true,
+  setUser: (user) =>
+    set({ user, isAuthenticated: !!user, isLoading: false }),
+  setLoading: (isLoading) => set({ isLoading }),
+  logout: () =>
+    set({ user: null, isAuthenticated: false, isLoading: false }),
+}));

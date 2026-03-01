@@ -1,199 +1,742 @@
 'use client';
 
 import { useEffect, useState, use } from 'react';
-import { useRouter } from 'next/navigation';
 import Navbar from '@/components/layout/Navbar';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, ChevronRight, HelpCircle, CheckCircle2, XCircle } from 'lucide-react';
+import { motion } from 'framer-motion';
+import {
+  Trophy,
+  Target,
+  Clock,
+  ArrowRight,
+  CheckCircle2,
+  XCircle,
+  Sparkles,
+  BarChart3,
+  Repeat,
+  LayoutDashboard,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  ChevronDown,
+  ChevronUp,
+  BookOpen,
+  MessageCircle,
+  AlertCircle,
+} from 'lucide-react';
+import Link from 'next/link';
 
-export default function ActiveQuizPage({ params }: { params: Promise<{ sessionId: string }> }) {
-  const { sessionId } = use(params);
-  const router = useRouter();
-  const [session, setSession] = useState<any>(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
-  const [isAnswered, setIsAnswered] = useState(false);
-  const [feedback, setFeedback] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [timer, setTimer] = useState(0);
+/* ─── Types ─────────────────────────────────────────────────── */
 
-  useEffect(() => {
-    fetch(`/api/quiz/${sessionId}`)
-      .then(res => res.json())
-      .then(data => {
-        setSession(data);
-        setLoading(false);
-      });
-  }, [sessionId]);
+interface GradedAnswer {
+  questionIndex: number;
+  userAnswer: string;
+  isCorrect: boolean;
+  correctAnswer: string;
+  solution: string;
+  content: string;
+  skill: string;
+  type: string;
+  confidence?: number;
+}
 
-  useEffect(() => {
-    if (!isAnswered && !loading) {
-      const interval = setInterval(() => setTimer(t => t + 1), 1000);
-      return () => clearInterval(interval);
-    }
-  }, [isAnswered, loading]);
+interface QuizResults {
+  attemptId: string | null;
+  score: number;
+  totalCorrect: number;
+  totalQuestions: number;
+  aiSummary: string | null;
+  focusTopics?: string[];
+  wrongCount: number;
+  gradedAnswers?: GradedAnswer[];
+}
 
-  const handleAnswer = async (answer: string) => {
-    if (isAnswered) return;
-    setSelectedAnswer(answer);
-    setIsAnswered(true);
+/* ─── Score Ring ─────────────────────────────────────────────── */
 
-    const currentQuestion = session.questions[currentIndex];
-    const res = await fetch('/api/quiz/answer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        quizQuestionId: currentQuestion.id,
-        userAnswer: answer,
-        timeSpentSecs: timer
-      })
-    });
-    const data = await res.json();
-    setFeedback(data);
-  };
-
-  const handleNext = async () => {
-    if (currentIndex < session.questions.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-      setSelectedAnswer(null);
-      setIsAnswered(false);
-      setFeedback(null);
-      setTimer(0);
-    } else {
-      await fetch('/api/quiz/complete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId })
-      });
-      router.push(`/quiz/results/${sessionId}`);
-    }
-  };
-
-  if (loading) return <div style={{ color: 'white', padding: '100px', textAlign: 'center' }}>Loading Quiz...</div>;
-
-  const currentQuizQuestion = session.questions[currentIndex];
-  const question = currentQuizQuestion.question;
-  const options = JSON.parse(question.options);
-  const progress = ((currentIndex + 1) / session.totalQuestions) * 100;
+function ScoreRing({ score, color }: { score: number; color: string }) {
+  const radius = 60;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (score / 100) * circumference;
 
   return (
-    <div style={{ minHeight: '100vh', paddingTop: '100px' }}>
-      <Navbar />
-      
-      <main style={{ maxWidth: '800px', margin: '0 auto', padding: '0 20px' }}>
-        {/* Progress Bar */}
-        <div style={{ marginBottom: '2rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem', color: '#a5b4fc', fontSize: '0.9rem' }}>
-            <span>Question {currentIndex + 1} of {session.totalQuestions}</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Clock size={16} /> {Math.floor(timer / 60)}:{String(timer % 60).padStart(2, '0')}
-            </span>
-          </div>
-          <div style={{ height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
-            <motion.div 
-              initial={{ width: 0 }}
-              animate={{ width: `${progress}%` }}
-              style={{ height: '100%', background: 'linear-gradient(to right, var(--primary), var(--secondary))' }}
-            />
-          </div>
-        </div>
+    <svg viewBox="0 0 140 140" width="140" height="140">
+      <circle
+        cx="70"
+        cy="70"
+        r={radius}
+        fill="none"
+        stroke="rgba(255,255,255,0.05)"
+        strokeWidth="10"
+      />
+      <motion.circle
+        cx="70"
+        cy="70"
+        r={radius}
+        fill="none"
+        stroke={color}
+        strokeWidth="10"
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        initial={{ strokeDashoffset: circumference }}
+        animate={{ strokeDashoffset: offset }}
+        transition={{ duration: 1.2, ease: 'easeOut', delay: 0.3 }}
+        transform="rotate(-90 70 70)"
+      />
+      <text
+        x="70"
+        y="65"
+        textAnchor="middle"
+        fill="white"
+        fontSize="28"
+        fontWeight="900"
+      >
+        {Math.round(score)}%
+      </text>
+      <text
+        x="70"
+        y="85"
+        textAnchor="middle"
+        fill="#6b7280"
+        fontSize="11"
+      >
+        Score
+      </text>
+    </svg>
+  );
+}
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={currentIndex}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="glass-card"
-            style={{ padding: '2.5rem' }}
+/* ─── Main Page ─────────────────────────────────────────────── */
+
+export default function ResultsPage({
+  params,
+}: {
+  params: Promise<{ sessionId: string }>;
+}) {
+  const { sessionId } = use(params);
+  const [results, setResults] = useState<QuizResults | null>(null);
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    const stored = sessionStorage.getItem(`quiz-results-${sessionId}`);
+    if (stored) {
+      setResults(JSON.parse(stored));
+    }
+  }, [sessionId]);
+
+  if (!results) {
+    return (
+      <div style={{ minHeight: '100vh', paddingTop: '100px' }}>
+        <Navbar />
+        <div
+          style={{
+            color: 'white',
+            padding: '100px 20px',
+            textAlign: 'center',
+          }}
+        >
+          <p style={{ marginBottom: '1rem', color: '#a5b4fc' }}>
+            Results not found.
+          </p>
+          <Link
+            href="/dashboard"
+            className="btn-primary"
+            style={{ display: 'inline-flex' }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
-              <span style={{ 
-                padding: '4px 12px', 
-                borderRadius: '20px', 
-                background: 'rgba(255,255,255,0.05)', 
-                fontSize: '0.75rem', 
-                textTransform: 'uppercase',
-                letterSpacing: '1px',
-                color: '#a5b4fc'
-              }}>
-                {question.difficulty}
-              </span>
-            </div>
+            Go to Dashboard <ArrowRight size={18} />
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
-            <h2 style={{ fontSize: '1.5rem', fontWeight: '600', lineHeight: '1.5', marginBottom: '2rem' }}>
-              {question.question}
-            </h2>
+  const scoreColor =
+    results.score >= 80
+      ? '#10b981'
+      : results.score >= 50
+        ? '#f59e0b'
+        : '#ef4444';
+  const scoreLabel =
+    results.score >= 90
+      ? 'Outstanding!'
+      : results.score >= 80
+        ? 'Excellent!'
+        : results.score >= 60
+          ? 'Good Effort!'
+          : results.score >= 40
+            ? 'Room to Grow'
+            : 'Keep Practicing!';
+  const TrendIcon =
+    results.score >= 80
+      ? TrendingUp
+      : results.score >= 50
+        ? Minus
+        : TrendingDown;
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {options.map((option: string, i: number) => {
-                let borderColor = 'rgba(255,255,255,0.1)';
-                let bgColor = 'transparent';
-                
-                if (isAnswered) {
-                  if (option === feedback?.correctAnswer) {
-                    borderColor = 'var(--success)';
-                    bgColor = 'rgba(16, 185, 129, 0.1)';
-                  } else if (option === selectedAnswer && !feedback?.isCorrect) {
-                    borderColor = 'var(--error)';
-                    bgColor = 'rgba(239, 68, 68, 0.1)';
-                  }
-                } else if (selectedAnswer === option) {
-                  borderColor = 'var(--primary)';
-                }
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        paddingTop: '100px',
+        paddingBottom: '80px',
+      }}
+    >
+      <Navbar />
 
-                return (
-                  <button
-                    key={i}
-                    onClick={() => handleAnswer(option)}
-                    disabled={isAnswered}
-                    style={{
-                      padding: '1.25rem',
-                      borderRadius: '12px',
-                      border: '1px solid',
-                      borderColor,
-                      background: bgColor,
-                      color: 'white',
-                      textAlign: 'left',
-                      fontSize: '1rem',
-                      cursor: isAnswered ? 'default' : 'pointer',
-                      transition: 'all 0.2s ease',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}
-                  >
-                    {option}
-                    {isAnswered && option === feedback?.correctAnswer && <CheckCircle2 size={20} color="var(--success)" />}
-                    {isAnswered && option === selectedAnswer && !feedback?.isCorrect && <XCircle size={20} color="var(--error)" />}
-                  </button>
-                );
-              })}
-            </div>
+      <main style={{ maxWidth: '700px', margin: '0 auto', padding: '0 20px' }}>
+        {/* ── Score Hero ────────────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="glass-card"
+          style={{
+            padding: '3rem 2.5rem',
+            textAlign: 'center',
+            marginBottom: '1.5rem',
+            background: `linear-gradient(135deg, ${scoreColor}08, rgba(99, 102, 241, 0.03))`,
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Subtle glow */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '-50px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: '200px',
+              height: '200px',
+              borderRadius: '50%',
+              background: `${scoreColor}10`,
+              filter: 'blur(60px)',
+              pointerEvents: 'none',
+            }}
+          />
 
-            {isAnswered && (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                style={{ marginTop: '2rem', padding: '1.5rem', borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              marginBottom: '1.5rem',
+              position: 'relative',
+            }}
+          >
+            <ScoreRing score={results.score} color={scoreColor} />
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem',
+              marginBottom: '0.5rem',
+            }}
+          >
+            <TrendIcon size={22} color={scoreColor} />
+            <p
+              style={{
+                fontSize: '1.25rem',
+                fontWeight: '700',
+                color: scoreColor,
+              }}
+            >
+              {scoreLabel}
+            </p>
+          </div>
+
+          {/* Stat cards */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: '1rem',
+              marginTop: '2rem',
+            }}
+          >
+            <div
+              style={{
+                padding: '1rem',
+                borderRadius: '12px',
+                background: 'rgba(16, 185, 129, 0.06)',
+                border: '1px solid rgba(16, 185, 129, 0.1)',
+              }}
+            >
+              <CheckCircle2
+                size={22}
+                color="#10b981"
+                style={{ margin: '0 auto 0.5rem' }}
+              />
+              <div
+                style={{
+                  fontSize: '1.5rem',
+                  fontWeight: '800',
+                  color: '#10b981',
+                }}
               >
-                <h4 style={{ color: '#a5b4fc', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <HelpCircle size={18} /> Explanation
-                </h4>
-                <p style={{ fontSize: '0.95rem', lineHeight: '1.6', color: '#cbd5e1' }}>
-                  {feedback?.explanation}
-                </p>
-                <button 
-                  onClick={handleNext}
-                  className="btn-primary" 
-                  style={{ marginTop: '1.5rem', width: '100%', justifyContent: 'center' }}
-                >
-                  {currentIndex === session.totalQuestions - 1 ? 'Finish Quiz' : 'Next Question'} <ChevronRight size={20} />
-                </button>
-              </motion.div>
-            )}
+                {results.totalCorrect}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                Correct
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: '1rem',
+                borderRadius: '12px',
+                background: 'rgba(239, 68, 68, 0.06)',
+                border: '1px solid rgba(239, 68, 68, 0.1)',
+              }}
+            >
+              <XCircle
+                size={22}
+                color="#ef4444"
+                style={{ margin: '0 auto 0.5rem' }}
+              />
+              <div
+                style={{
+                  fontSize: '1.5rem',
+                  fontWeight: '800',
+                  color: '#ef4444',
+                }}
+              >
+                {results.wrongCount}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                Wrong
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: '1rem',
+                borderRadius: '12px',
+                background: 'rgba(99, 102, 241, 0.06)',
+                border: '1px solid rgba(99, 102, 241, 0.1)',
+              }}
+            >
+              <Target
+                size={22}
+                color="#6366f1"
+                style={{ margin: '0 auto 0.5rem' }}
+              />
+              <div
+                style={{
+                  fontSize: '1.5rem',
+                  fontWeight: '800',
+                  color: '#6366f1',
+                }}
+              >
+                {results.totalQuestions}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                Total
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ── AI Summary ───────────────────────────────────── */}
+        {results.aiSummary && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="glass-card"
+            style={{ padding: '2rem', marginBottom: '1.5rem' }}
+          >
+            <h3
+              style={{
+                fontSize: '1.15rem',
+                fontWeight: '700',
+                marginBottom: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+              }}
+            >
+              <Sparkles size={20} color="#6366f1" />
+              AI Performance Analysis
+            </h3>
+            <p
+              style={{
+                color: '#cbd5e1',
+                lineHeight: '1.8',
+                fontSize: '0.92rem',
+                whiteSpace: 'pre-line',
+              }}
+            >
+              {results.aiSummary}
+            </p>
           </motion.div>
-        </AnimatePresence>
+        )}
+
+        {/* ── Answer Review ─────────────────────────────────── */}
+        {results.gradedAnswers && results.gradedAnswers.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="glass-card"
+            style={{ padding: '2rem', marginBottom: '1.5rem' }}
+          >
+            <h3
+              style={{
+                fontSize: '1.15rem',
+                fontWeight: '700',
+                marginBottom: '1.25rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+              }}
+            >
+              <BookOpen size={20} color="#a5b4fc" />
+              Answer Review
+              <span
+                style={{
+                  marginLeft: '8px',
+                  padding: '2px 10px',
+                  borderRadius: '12px',
+                  background: 'rgba(255,255,255,0.05)',
+                  fontSize: '0.8rem',
+                  color: '#6b7280',
+                  fontWeight: '400',
+                }}
+              >
+                {results.totalCorrect} / {results.totalQuestions} correct
+              </span>
+            </h3>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              {[...results.gradedAnswers]
+                .sort((a, b) => (a.isCorrect ? 1 : 0) - (b.isCorrect ? 1 : 0))
+                .map((ga, i) => {
+                  const isOpen = openIndex === i;
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        borderRadius: '12px',
+                        border: ga.isCorrect
+                          ? '1px solid rgba(16,185,129,0.15)'
+                          : '1px solid rgba(239,68,68,0.15)',
+                        background: ga.isCorrect
+                          ? 'rgba(16,185,129,0.03)'
+                          : 'rgba(239,68,68,0.03)',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {/* Question header — always visible */}
+                      <button
+                        onClick={() => setOpenIndex(isOpen ? null : i)}
+                        style={{
+                          width: '100%',
+                          padding: '14px 16px',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          textAlign: 'left',
+                        }}
+                      >
+                        {ga.isCorrect ? (
+                          <CheckCircle2 size={18} color="#10b981" style={{ flexShrink: 0 }} />
+                        ) : (
+                          <XCircle size={18} color="#ef4444" style={{ flexShrink: 0 }} />
+                        )}
+                        <span
+                          style={{
+                            flex: 1,
+                            fontSize: '0.88rem',
+                            color: '#e2e8f0',
+                            lineHeight: '1.4',
+                          }}
+                        >
+                          {ga.content.length > 120
+                            ? ga.content.slice(0, 120) + '…'
+                            : ga.content}
+                        </span>
+                        <span
+                          style={{
+                            padding: '2px 8px',
+                            borderRadius: '8px',
+                            background: 'rgba(255,255,255,0.04)',
+                            fontSize: '0.7rem',
+                            color: '#6b7280',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {ga.skill}
+                        </span>
+                        {isOpen ? (
+                          <ChevronUp size={16} color="#6b7280" style={{ flexShrink: 0 }} />
+                        ) : (
+                          <ChevronDown size={16} color="#6b7280" style={{ flexShrink: 0 }} />
+                        )}
+                      </button>
+
+                      {/* Expanded detail */}
+                      {isOpen && (
+                        <div
+                          style={{
+                            padding: '0 16px 16px',
+                            borderTop: '1px solid rgba(255,255,255,0.04)',
+                            marginTop: '0',
+                          }}
+                        >
+                          <div
+                            style={{
+                              marginTop: '12px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '10px',
+                            }}
+                          >
+                            {/* Full question */}
+                            <p
+                              style={{
+                                fontSize: '0.875rem',
+                                color: '#f1f5f9',
+                                lineHeight: '1.6',
+                              }}
+                            >
+                              {ga.content}
+                            </p>
+
+                            {/* Your answer */}
+                            <div
+                              style={{
+                                padding: '10px 14px',
+                                borderRadius: '8px',
+                                background: ga.isCorrect
+                                  ? 'rgba(16,185,129,0.06)'
+                                  : 'rgba(239,68,68,0.06)',
+                                border: ga.isCorrect
+                                  ? '1px solid rgba(16,185,129,0.1)'
+                                  : '1px solid rgba(239,68,68,0.1)',
+                                fontSize: '0.82rem',
+                              }}
+                            >
+                              <span style={{ color: '#6b7280' }}>Your answer: </span>
+                              <span
+                                style={{
+                                  color: ga.isCorrect ? '#10b981' : '#ef4444',
+                                  fontWeight: '600',
+                                }}
+                              >
+                                {ga.userAnswer || '(no answer)'}
+                              </span>
+                            </div>
+
+                            {/* Correct answer — only show if wrong */}
+                            {!ga.isCorrect && (
+                              <div
+                                style={{
+                                  padding: '10px 14px',
+                                  borderRadius: '8px',
+                                  background: 'rgba(16,185,129,0.06)',
+                                  border: '1px solid rgba(16,185,129,0.1)',
+                                  fontSize: '0.82rem',
+                                }}
+                              >
+                                <span style={{ color: '#6b7280' }}>Correct answer: </span>
+                                <span style={{ color: '#10b981', fontWeight: '600' }}>
+                                  {ga.correctAnswer}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Explanation */}
+                            {ga.solution && (
+                              <div
+                                style={{
+                                  padding: '10px 14px',
+                                  borderRadius: '8px',
+                                  background: 'rgba(165,180,252,0.04)',
+                                  border: '1px solid rgba(165,180,252,0.08)',
+                                  fontSize: '0.82rem',
+                                  color: '#cbd5e1',
+                                  lineHeight: '1.6',
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    color: '#a5b4fc',
+                                    fontWeight: '600',
+                                    display: 'block',
+                                    marginBottom: '4px',
+                                  }}
+                                >
+                                  💡 Explanation
+                                </span>
+                                {ga.solution}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── Focus Topics ────────────────────────────────── */}
+        {results.focusTopics && results.focusTopics.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+            className="glass-card"
+            style={{ padding: '2rem', marginBottom: '1.5rem' }}
+          >
+            <h3
+              style={{
+                fontSize: '1.15rem', fontWeight: '700', marginBottom: '1rem',
+                display: 'flex', alignItems: 'center', gap: '0.5rem',
+              }}
+            >
+              <AlertCircle size={20} color="#f59e0b" />
+              Topics to Focus On
+            </h3>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {results.focusTopics.map((topic, i) => (
+                <span
+                  key={i}
+                  style={{
+                    padding: '6px 14px', borderRadius: '20px',
+                    background: 'rgba(245, 158, 11, 0.08)',
+                    border: '1px solid rgba(245, 158, 11, 0.2)',
+                    color: '#fbbf24', fontSize: '0.82rem', fontWeight: '600',
+                  }}
+                >
+                  {topic}
+                </span>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── Mentorship CTA ──────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.45 }}
+          style={{
+            marginBottom: '1.5rem',
+            padding: '1.75rem',
+            borderRadius: '16px',
+            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(6, 182, 212, 0.05))',
+            border: '1px solid rgba(99, 102, 241, 0.2)',
+            textAlign: 'center',
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute', top: 0, left: 0, right: 0, height: '3px',
+              background: 'linear-gradient(90deg, #6366f1, #06b6d4, #10b981)',
+            }}
+          />
+          <MessageCircle size={28} color="#a5b4fc" style={{ margin: '0 auto 0.75rem' }} />
+          <h3 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '0.5rem' }}>
+            Want Personalized Mentorship?
+          </h3>
+          <p style={{ color: '#94a3b8', fontSize: '0.88rem', marginBottom: '1.25rem', lineHeight: 1.5 }}>
+            Get 1-on-1 guidance from experienced data analytics mentors for doubt-clearing, career growth, and interview preparation.
+          </p>
+          <a
+            href="https://mentorship-platform-ve5o.onrender.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '8px',
+              padding: '12px 28px', borderRadius: '12px',
+              background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
+              color: 'white', fontWeight: '700', fontSize: '0.95rem',
+              textDecoration: 'none', boxShadow: '0 4px 20px rgba(99, 102, 241, 0.3)',
+              transition: 'transform 0.2s',
+            }}
+          >
+            <MessageCircle size={16} />
+            Connect with a Mentor
+            <ArrowRight size={14} />
+          </a>
+        </motion.div>
+
+        {/* ── Actions ──────────────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: '1rem',
+          }}
+        >
+          <Link
+            href="/quiz"
+            className="btn-primary"
+            style={{
+              justifyContent: 'center',
+              textDecoration: 'none',
+              padding: '14px',
+              gap: '8px',
+            }}
+          >
+            <Repeat size={18} />
+            New Quiz
+          </Link>
+          <Link
+            href="/leaderboard"
+            style={{
+              padding: '14px',
+              borderRadius: '12px',
+              border: '1px solid rgba(245,158,11,0.2)',
+              background: 'rgba(245,158,11,0.04)',
+              color: '#fbbf24',
+              cursor: 'pointer',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              textDecoration: 'none',
+              fontSize: '0.9rem',
+              transition: 'all 0.2s',
+            }}
+          >
+            <Trophy size={18} />
+            Leaderboard
+          </Link>
+          <Link
+            href="/dashboard"
+            style={{
+              padding: '14px',
+              borderRadius: '12px',
+              border: '1px solid rgba(255,255,255,0.08)',
+              background: 'rgba(255,255,255,0.02)',
+              color: 'white',
+              cursor: 'pointer',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              textDecoration: 'none',
+              fontSize: '0.9rem',
+              transition: 'all 0.2s',
+            }}
+          >
+            <LayoutDashboard size={18} />
+            Dashboard
+          </Link>
+        </motion.div>
       </main>
     </div>
   );

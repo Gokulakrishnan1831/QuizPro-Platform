@@ -1,68 +1,80 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { postProcessQuestions } from '@/lib/ai/post-process';
 
+/**
+ * POST /api/quiz/answer
+ *
+ * Grade a single question answer. Returns whether it's correct,
+ * the correct answer, and the solution/explanation.
+ *
+ * Body: { quizId, questionIndex, userAnswer }
+ */
 export async function POST(request: Request) {
   try {
-    const { sessionId } = await request.json();
+    const { quizId, questionIndex, userAnswer } = await request.json();
 
-    const session = await prisma.quizSession.findUnique({
-      where: { id: sessionId },
-      include: { questions: true }
-    });
-
-    if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
-
-    const score = (session.correctCount / session.totalQuestions) * 100;
-
-    const updatedSession = await prisma.quizSession.update({
-      where: { id: sessionId },
-      data: {
-        status: 'completed',
-        completedAt: new Date(),
-        score
-      }
-    });
-
-    // Update User Progress for the skill
-    // (Assuming all questions in session are for the same skill for now)
-    const firstQuestion = await prisma.quizQuestion.findFirst({
-      where: { sessionId },
-      include: { question: true }
-    });
-
-    if (firstQuestion) {
-      const skillId = firstQuestion.question.skillId;
-      const userId = session.userId;
-
-      const progress = await prisma.userProgress.upsert({
-        where: { userId_skillId: { userId, skillId } },
-        update: {
-          totalAttempted: { increment: session.totalQuestions },
-          totalCorrect: { increment: session.correctCount },
-          lastPracticed: new Date(),
-          // Simple accuracy update
-        },
-        create: {
-          userId,
-          skillId,
-          totalAttempted: session.totalQuestions,
-          totalCorrect: session.correctCount,
-          accuracy: score,
-          lastPracticed: new Date(),
-        }
-      });
-      
-      // Recalculate accuracy
-      await prisma.userProgress.update({
-        where: { id: progress.id },
-        data: {
-          accuracy: (progress.totalCorrect / progress.totalAttempted) * 100
-        }
-      });
+    if (!quizId || questionIndex === undefined || !userAnswer) {
+      return NextResponse.json(
+        { error: 'quizId, questionIndex, and userAnswer are required' },
+        { status: 400 },
+      );
     }
 
-    return NextResponse.json(updatedSession);
+    const db = prisma as any;
+    const quiz = await db.quiz?.findUnique?.({ where: { id: quizId } }).catch(() => null);
+
+    if (!quiz) {
+      return NextResponse.json({ error: 'Quiz not found' }, { status: 404 });
+    }
+
+    const questions = postProcessQuestions(quiz.questions as any[]);
+    const question = questions[questionIndex];
+
+    if (!question) {
+      return NextResponse.json(
+        { error: 'Question index out of range' },
+        { status: 400 },
+      );
+    }
+
+    const qType = String(question.type ?? 'MCQ').toUpperCase();
+    let isCorrect = false;
+    if (qType === 'POWERBI_FILL_BLANK') {
+      const caseSensitive = Boolean(question.caseSensitive);
+      const normalize = (v: string) => caseSensitive ? v.trim() : v.trim().toLowerCase();
+      const actual = normalize(String(userAnswer ?? ''));
+      const accepted = Array.isArray(question.acceptedAnswers)
+        ? question.acceptedAnswers.filter((v: any) => typeof v === 'string').map((v: string) => normalize(v))
+        : [];
+      isCorrect = accepted.includes(actual);
+    } else if (qType === 'SQL_HANDS_ON' || qType === 'EXCEL_HANDS_ON') {
+      // SQL/Excel grading requires DuckDB — defer to client-side comparison
+      // Return null to indicate grading was not performed here
+      return NextResponse.json({
+        isCorrect: null,
+        correctAnswer: question.solution ?? '',
+        explanation: question.solution,
+      });
+    } else {
+      isCorrect =
+        String(userAnswer).trim().toLowerCase() ===
+        String(question.correctAnswer).trim().toLowerCase();
+    }
+
+    return NextResponse.json({
+      isCorrect,
+      correctAnswer:
+        qType === 'POWERBI_FILL_BLANK'
+          ? (Array.isArray(question.acceptedAnswers) ? question.acceptedAnswers[0] : '')
+          : question.correctAnswer,
+      explanation: question.solution,
+    });
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to complete quiz' }, { status: 500 });
+    console.error('Answer grade error:', error);
+    return NextResponse.json(
+      { error: 'Failed to grade answer' },
+      { status: 500 },
+    );
   }
 }

@@ -1,57 +1,79 @@
 import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 import prisma from '@/lib/prisma';
 
-export async function GET(request: Request) {
+/**
+ * GET /api/dashboard
+ *
+ * Returns the authenticated user's profile and aggregated stats.
+ * Requires a valid Supabase session.
+ */
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
+    const supabase = await createClient();
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
 
-    if (!userId) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
+    if (!authUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Fetch user stats
+    // Fetch user profile + progress + recent attempts
     const user = await prisma.user.findUnique({
-      where: { id: userId },
+      where: { id: authUser.id },
       include: {
-        progress: {
-          include: { skill: true }
+        progress: true,
+        quizAttempts: {
+          orderBy: { completedAt: 'desc' },
+          take: 5,
+          include: { quiz: { select: { persona: true, timerMins: true } } },
         },
-        streaks: true,
-        quizSessions: {
-          orderBy: { startedAt: 'desc' },
-          take: 5
-        }
-      }
+      },
     });
 
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      return NextResponse.json({ error: 'User not found in database' }, { status: 404 });
     }
 
-    // Calculate aggregate stats
-    const totalQuestions = user.progress.reduce((acc, p) => acc + p.totalAttempted, 0);
-    const totalCorrect = user.progress.reduce((acc, p) => acc + p.totalCorrect, 0);
-    const overallAccuracy = totalQuestions > 0 ? (totalCorrect / totalQuestions) * 100 : 0;
+    // Aggregate stats
+    const totalAttempted = user.progress.reduce((sum, p) => sum + p.totalAttempted, 0);
+    const totalCorrect = user.progress.reduce((sum, p) => sum + p.totalCorrect, 0);
+    const overallAccuracy =
+      totalAttempted > 0 ? Math.round((totalCorrect / totalAttempted) * 100) : 0;
 
-    const stats = {
-      totalQuestions,
-      accuracy: Math.round(overallAccuracy),
-      streak: user.streaks?.currentStreak || 0,
-      xp: totalCorrect * 10, // Simple XP calculation
-      recentSessions: user.quizSessions,
-      skillProgress: user.progress.map(p => ({
-        skillName: p.skill.name,
-        accuracy: p.accuracy,
-        mastery: p.masteryLevel,
-        totalAttempted: p.totalAttempted
-      }))
-    };
-
-    return NextResponse.json(stats);
-
-  } catch (error) {
-    console.error('Dashboard API Error:', error);
+    return NextResponse.json({
+      profile: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        persona: user.persona,
+        subscriptionTier: user.subscriptionTier,
+        quizzesRemaining: user.quizzesRemaining,
+      },
+      stats: {
+        totalAttempted,
+        totalCorrect,
+        accuracy: overallAccuracy,
+        quizzesTaken: user.quizAttempts.length,
+      },
+      skillProgress: user.progress.map((p) => ({
+        skill: p.skill,
+        totalAttempted: p.totalAttempted,
+        totalCorrect: p.totalCorrect,
+        accuracy: Number(p.accuracy),
+        lastPracticed: p.lastPracticed,
+      })),
+      recentAttempts: user.quizAttempts.map((a) => ({
+        id: a.id,
+        score: Number(a.score),
+        timeTaken: a.timeTaken,
+        persona: a.quiz.persona,
+        completedAt: a.completedAt,
+      })),
+    });
+  } catch (error: any) {
+    console.error('Dashboard API error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
