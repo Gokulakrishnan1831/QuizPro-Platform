@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { generateAIQuestion } from '@/lib/ai/question-generator';
-import prisma from '@/lib/prisma';
+import { createQuestion } from '@/lib/firebase/db';
 
 /**
  * POST /api/ai/generate
  *
- * Generate a single AI question and optionally save it to the Question bank.
+ * Generate a single AI question and optionally save it to the Firestore question bank.
  *
  * Body: { skill, difficulty, save? }
  */
@@ -32,31 +32,27 @@ export async function POST(request: Request) {
     const typeUpper = String(aiQuestion?.type ?? 'MCQ').toUpperCase();
     const isFillBlank = typeUpper === 'POWERBI_FILL_BLANK';
 
-    // Optionally persist to the question bank
     if (save) {
-      const saved = await prisma.question.create({
-        data: {
-          skill: aiQuestion.skill,
-          // Question enum may not yet include POWERBI_FILL_BLANK in DB schema.
-          type: (isFillBlank ? 'MCQ' : (aiQuestion.type || 'MCQ')) as any,
-          content: aiQuestion.content,
-          options: isFillBlank ? null : (aiQuestion.options ?? null),
-          correctAnswer: isFillBlank
-            ? (aiQuestion.acceptedAnswers?.[0] ?? '')
-            : aiQuestion.correctAnswer,
-          solution: aiQuestion.solution,
-          difficulty: aiQuestion.difficulty ?? difficulty,
-          metadata: isFillBlank
-            ? {
-              type: 'POWERBI_FILL_BLANK',
-              blankLabel: aiQuestion.blankLabel ?? 'Answer',
-              acceptedAnswers: aiQuestion.acceptedAnswers ?? [],
-              caseSensitive: Boolean(aiQuestion.caseSensitive),
-            }
-            : undefined,
-        },
+      const id = await createQuestion({
+        skill: aiQuestion.skill,
+        type: isFillBlank ? 'MCQ' : (aiQuestion.type || 'MCQ'),
+        content: aiQuestion.content,
+        options: isFillBlank ? null : (aiQuestion.options ?? null),
+        correctAnswer: isFillBlank
+          ? (aiQuestion.acceptedAnswers?.[0] ?? '')
+          : aiQuestion.correctAnswer,
+        solution: aiQuestion.solution,
+        difficulty: aiQuestion.difficulty ?? difficulty,
+        metadata: isFillBlank
+          ? {
+            type: 'POWERBI_FILL_BLANK',
+            blankLabel: aiQuestion.blankLabel ?? 'Answer',
+            acceptedAnswers: aiQuestion.acceptedAnswers ?? [],
+            caseSensitive: Boolean(aiQuestion.caseSensitive),
+          }
+          : undefined,
       });
-      return NextResponse.json(saved);
+      return NextResponse.json({ id, ...aiQuestion });
     }
 
     return NextResponse.json(aiQuestion);

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import prisma from '@/lib/prisma';
+import { getAllUsers, getQuizAttemptsByUser, updateUser } from '@/lib/firebase/db';
 
 const JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'quizpro-admin-secret-key-change-in-production';
 
@@ -20,47 +20,51 @@ export async function GET(request: Request) {
     const limit = Math.min(100, parseInt(searchParams.get('limit') ?? '20', 10));
     const tier = searchParams.get('tier') ?? undefined;
     const persona = searchParams.get('persona') ?? undefined;
-    const q = searchParams.get('q') ?? undefined;
+    const q = searchParams.get('q')?.toLowerCase() ?? undefined;
 
     try {
-        const db = prisma as any;
+        let users = await getAllUsers();
 
-        const where: any = {};
-        if (tier) where.subscriptionTier = tier;
-        if (persona) where.persona = persona;
+        // Apply filters
+        if (tier) users = users.filter((u) => u.subscriptionTier === tier);
+        if (persona) users = users.filter((u) => u.persona === persona);
         if (q) {
-            where.OR = [
-                { email: { contains: q, mode: 'insensitive' } },
-                { name: { contains: q, mode: 'insensitive' } },
-            ];
+            users = users.filter((u) =>
+                (u.email?.toLowerCase().includes(q)) ||
+                (u.name?.toLowerCase().includes(q))
+            );
         }
 
-        const [total, users] = await Promise.all([
-            db.user.count({ where }),
-            db.user.findMany({
-                where,
-                take: limit,
-                skip: (page - 1) * limit,
-                orderBy: { createdAt: 'desc' },
-                select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                    persona: true,
-                    subscriptionTier: true,
-                    quizzesRemaining: true,
-                    experienceYears: true,
-                    createdAt: true,
-                    _count: { select: { quizAttempts: true } },
-                },
-            }),
-        ]);
+        // Sort by createdAt desc
+        users.sort((a, b) => {
+            const aTime = a.createdAt?.toMillis?.() ?? 0;
+            const bTime = b.createdAt?.toMillis?.() ?? 0;
+            return bTime - aTime;
+        });
+
+        const total = users.length;
+        const pageUsers = users.slice((page - 1) * limit, page * limit);
+
+        // Get quiz attempt counts
+        const usersWithCounts = await Promise.all(
+            pageUsers.map(async (u) => {
+                const attempts = await getQuizAttemptsByUser(u.id);
+                return {
+                    id: u.id,
+                    name: u.name,
+                    email: u.email,
+                    persona: u.persona,
+                    subscriptionTier: u.subscriptionTier,
+                    quizzesRemaining: u.quizzesRemaining,
+                    experienceYears: u.experienceYears,
+                    createdAt: u.createdAt,
+                    quizzesTaken: attempts.length,
+                };
+            })
+        );
 
         return NextResponse.json({
-            users: users.map((u: any) => ({
-                ...u,
-                quizzesTaken: u._count?.quizAttempts ?? 0,
-            })),
+            users: usersWithCounts,
             total,
             page,
             pages: Math.ceil(total / limit),
@@ -84,23 +88,13 @@ export async function PATCH(request: Request) {
             return NextResponse.json({ error: 'userId required' }, { status: 400 });
         }
 
-        const db = prisma as any;
+        const data: any = {};
+        if (subscriptionTier) data.subscriptionTier = subscriptionTier;
+        if (quizzesRemaining !== undefined) data.quizzesRemaining = quizzesRemaining;
 
-        const updated = await db.user.update({
-            where: { id: userId },
-            data: {
-                ...(subscriptionTier && { subscriptionTier }),
-                ...(quizzesRemaining !== undefined && { quizzesRemaining }),
-            },
-            select: {
-                id: true,
-                email: true,
-                subscriptionTier: true,
-                quizzesRemaining: true,
-            },
-        });
+        await updateUser(userId, data);
 
-        return NextResponse.json({ success: true, user: updated });
+        return NextResponse.json({ success: true, user: { id: userId, ...data } });
     } catch (err: any) {
         console.error('[admin/users] PATCH error:', err);
         return NextResponse.json({ error: err.message }, { status: 500 });

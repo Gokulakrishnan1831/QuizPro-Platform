@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import prisma from '@/lib/prisma';
+import { getAdminByEmail } from '@/lib/firebase/db';
 
 const JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'quizpro-admin-secret-key-change-in-production';
 
@@ -13,20 +13,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
         }
 
-        // Look up admin by email using raw query (Prisma client may not have Admin model generated yet)
-        const db = prisma as any;
-        let admin: any;
-
-        try {
-            admin = await db.admin.findUnique({ where: { email } });
-        } catch {
-            // Fallback to raw query if Prisma client doesn't have Admin model yet
-            const result = await db.$queryRawUnsafe(
-                'SELECT id, email, "passwordHash", name FROM "Admin" WHERE email = $1 LIMIT 1',
-                email
-            );
-            admin = result[0] || null;
-        }
+        const admin = await getAdminByEmail(email);
 
         if (!admin) {
             return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
@@ -37,14 +24,12 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
         }
 
-        // Create JWT
         const token = jwt.sign(
             { adminId: admin.id, email: admin.email },
             JWT_SECRET,
             { expiresIn: '24h' }
         );
 
-        // Set HTTP-only cookie
         const response = NextResponse.json({
             success: true,
             admin: { id: admin.id, email: admin.email, name: admin.name },
@@ -54,7 +39,7 @@ export async function POST(request: Request) {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
-            maxAge: 60 * 60 * 24, // 24 hours
+            maxAge: 60 * 60 * 24,
             path: '/',
         });
 

@@ -1,6 +1,7 @@
 'use client';
 
-import { createClient } from '@/lib/supabase/client';
+import { auth } from '@/lib/firebase/client';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   User,
@@ -101,7 +102,6 @@ const SKILLS_LIST = [
 
 export default function SignupPage() {
   const router = useRouter();
-  const supabase = createClient();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [step, setStep] = useState(1);
@@ -170,46 +170,34 @@ export default function SignupPage() {
     setError('');
 
     try {
-      // 1. Create Supabase auth user
-      const { data: authData, error: signUpError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            full_name: formData.name,
-            profile_type: formData.profileType,
-          },
-        },
+      // 1. Create Firebase auth user
+      const credential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+      const firebaseUser = credential.user;
+
+      // Update display name
+      await updateProfile(firebaseUser, { displayName: formData.name });
+
+      // 2. Get ID token and create server session
+      const idToken = await firebaseUser.getIdToken();
+      const sessionRes = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
       });
+      if (!sessionRes.ok) throw new Error('Failed to create session');
 
-      if (signUpError) {
-        let msg = signUpError.message;
-        const lower = msg.toLowerCase();
-        if (lower.includes('invalid') && lower.includes('email')) {
-          msg = 'Email rejected. Check your Supabase email allowlist settings.';
-        } else if (lower.includes('already registered') || lower.includes('already exists')) {
-          msg = 'An account with this email already exists. Please log in.';
-        } else if (lower.includes('password')) {
-          msg = 'Password must be at least 6 characters.';
-        }
-        throw new Error(msg);
-      }
-      if (!authData.user) throw new Error('Signup succeeded but no user returned');
-
-      // 2. Upload resume if present (store as base64 URL for now)
+      // 3. Upload resume if present (placeholder)
       let resumeUrl: string | null = null;
       if (formData.resumeFile) {
-        // In a production app, upload to Supabase Storage / S3 here.
-        // For now we store the filename as a placeholder path.
-        resumeUrl = `/uploads/resumes/${authData.user.id}_${formData.resumeFileName}`;
+        resumeUrl = `/uploads/resumes/${firebaseUser.uid}_${formData.resumeFileName}`;
       }
 
-      // 3. Sync profile to Prisma
+      // 4. Sync profile to Firestore
       const syncRes = await fetch('/api/auth/sync-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: authData.user.id,
+          id: firebaseUser.uid,
           email: formData.email,
           name: formData.name,
           persona: derivePersona(),
@@ -253,8 +241,16 @@ export default function SignupPage() {
       }
     } catch (err: any) {
       console.error('Signup error:', err);
-      setError(err.message);
-      const lower = (err.message || '').toLowerCase();
+      let msg = err.message || 'Signup failed';
+      if (msg.includes('email-already-in-use')) {
+        msg = 'An account with this email already exists. Please log in.';
+      } else if (msg.includes('weak-password')) {
+        msg = 'Password must be at least 6 characters.';
+      } else if (msg.includes('invalid-email')) {
+        msg = 'Please enter a valid email address.';
+      }
+      setError(msg);
+      const lower = msg.toLowerCase();
       if (lower.includes('email') || lower.includes('password')) {
         setStep(1);
       }

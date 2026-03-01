@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import prisma from '@/lib/prisma';
+import { getAuthenticatedUser } from '@/lib/auth';
+import { getQuizById, getUserById, createQuizAttempt, getUserProgress, upsertUserProgress } from '@/lib/firebase/db';
 import { groqSummaryCompletion } from '@/lib/ai/groq-client';
 import { buildPerformanceSummaryPrompt } from '@/lib/ai/prompts';
 import { postProcessQuestions } from '@/lib/ai/post-process';
@@ -36,10 +36,10 @@ function normalizeValue(val: any): string {
 
 function normalizeSql(sql: string): string {
   return sql
-    .replace(/--[^\n]*/g, '')        // strip single-line comments
-    .replace(/\/\*[\s\S]*?\*\//g, '') // strip block comments
-    .replace(/;+\s*$/, '')            // remove trailing semicolons
-    .replace(/\s+/g, ' ')             // collapse whitespace
+    .replace(/--[^\n]*/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/;+\s*$/, '')
+    .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
 }
@@ -80,7 +80,6 @@ function compareResults(
       })
       .join('|');
 
-  // Try matching by column name first
   const colsMissing = expectedCols.filter((c) => !actualCols.includes(c));
   if (colsMissing.length === 0) {
     const expectedSet = new Set(expected.map((r) => serializeByName(r, expectedCols)));
@@ -97,8 +96,6 @@ function compareResults(
     };
   }
 
-  // Fallback: column names differ (e.g. avg(score) vs average_score)
-  // Compare by column position if same number of columns
   if (actualCols.length !== expectedCols.length) {
     return {
       match: false,
@@ -132,10 +129,10 @@ async function runDuckDbQuery(
   const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
   const worker = await duckdb.createWorker(bundle.mainWorker!);
   const logger = new duckdb.ConsoleLogger();
-  const db = new duckdb.AsyncDuckDB(logger, worker);
+  const dbInst = new duckdb.AsyncDuckDB(logger, worker);
 
-  await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-  const conn = await db.connect();
+  await dbInst.instantiate(bundle.mainModule, bundle.pthreadWorker);
+  const conn = await dbInst.connect();
 
   try {
     for (const stmt of splitSqlStatements(setupSQL)) {
@@ -151,7 +148,7 @@ async function runDuckDbQuery(
       // ignore
     }
     try {
-      await (db as any).terminate?.();
+      await (dbInst as any).terminate?.();
     } catch {
       // ignore
     }
@@ -170,7 +167,6 @@ async function gradeSqlHandsOn(
   if (!userQuery || !String(userQuery).trim()) return { isCorrect: false };
   if (!question?.setupSQL) return { isCorrect: false };
 
-  // Strip SQL comments (e.g. "-- Write your SQL query here") before execution
   const cleanQuery = stripSqlComments(String(userQuery));
   if (!cleanQuery) return { isCorrect: false };
 
@@ -317,17 +313,10 @@ async function gradePowerBiFillBlank(
  * update UserProgress, and generate an AI summary.
  *
  * Body: { quizId, answers: [{ questionIndex, userAnswer, confidence? }], timeTaken, questions? }
- *
- * NOTE: QuizAttempt / UserProgress tables require `prisma db push`.
- * Gracefully degrades if those tables don't exist yet.
  */
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user: authUser },
-    } = await supabase.auth.getUser();
-
+    const authUser = await getAuthenticatedUser();
     if (!authUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -341,26 +330,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const db = prisma as any;
-
-    // Try to load quiz from DB; fall back to client-supplied questions
+    // Try to load quiz from Firestore; fall back to client-supplied questions
     let questions: any[];
     let quizPersona = 'FRESHER';
-    let quizProfileType = 'FRESHER';
+    let quizProfileType = authUser.profileType ?? 'FRESHER';
 
-    try {
-      const quiz = await db.quiz?.findUnique?.({ where: { id: quizId } });
-      if (quiz) {
-        questions = quiz.questions as any[];
-        quizPersona = quiz.persona;
-      } else {
-        questions = clientQuestions ?? [];
-      }
-
-      // Load user's profileType
-      const dbUser = await db.user?.findUnique?.({ where: { id: authUser.id } });
-      quizProfileType = dbUser?.profileType ?? 'FRESHER';
-    } catch {
+    const quiz = await getQuizById(quizId);
+    if (quiz) {
+      questions = quiz.questions as any[];
+      quizPersona = quiz.persona;
+    } else {
       questions = clientQuestions ?? [];
     }
 
@@ -389,7 +368,6 @@ export async function POST(request: Request) {
           const graded = await gradeSqlHandsOn(q, ans.userAnswer);
           isCorrect = graded.isCorrect;
         } catch {
-          // Fallback: normalize SQL text comparison (strip comments, whitespace, casing)
           const correctSql = q.solution ?? q.correctAnswer ?? '';
           isCorrect = normalizeSql(String(ans.userAnswer)) === normalizeSql(String(correctSql));
         }
@@ -445,7 +423,7 @@ export async function POST(request: Request) {
     const score =
       answers.length > 0 ? (totalCorrect / answers.length) * 100 : 0;
 
-    // ── Generate AI summary (non-blocking — don't fail the request) ──
+    // ── Generate AI summary ──────────────────────────────────────────
     let aiSummary: string | null = null;
     try {
       if (wrongAnswers.length > 0) {
@@ -467,7 +445,7 @@ export async function POST(request: Request) {
           'Perfect score! You demonstrated strong command across all topics tested. Keep challenging yourself with harder difficulty levels.';
       }
     } catch {
-      aiSummary = null; // non-critical
+      aiSummary = null;
     }
 
     // ── Parse focus topics from AI summary ────────────────────────────
@@ -478,38 +456,36 @@ export async function POST(request: Request) {
         if (topicsMatch?.[1]) {
           focusTopics = JSON.parse(topicsMatch[1]);
         }
-        // Clean the summary: extract just the SUMMARY section
         const summaryMatch = aiSummary.match(/SUMMARY:\s*\n?([\s\S]*?)(?=\nTOPICS:|$)/);
         if (summaryMatch?.[1]) {
           aiSummary = summaryMatch[1].trim();
         }
       } catch {
-        // If parsing fails, keep the full aiSummary and empty focusTopics
+        // Keep full summary if parsing fails
       }
     }
 
-    // ── Persist QuizAttempt (graceful if table doesn't exist) ────────
+    // ── Persist QuizAttempt to Firestore ─────────────────────────────
     let attemptId: string | null = null;
     try {
-      const attempt = await db.quizAttempt?.create?.({
-        data: {
-          userId: authUser.id,
-          quizId,
-          answers: gradedAnswers,
-          score,
-          timeTaken: timeTaken ?? 0,
-          wrongAnswers,
-          aiSummary,
-          ...(typeof tabSwitchCount === 'number' ? { tabSwitchCount } : {}),
-          ...(typeof terminatedByProctor === 'boolean' ? { terminatedByProctor } : {}),
-        },
+      attemptId = await createQuizAttempt({
+        userId: authUser.id,
+        quizId,
+        answers: gradedAnswers,
+        score,
+        timeTaken: timeTaken ?? 0,
+        wrongAnswers,
+        aiSummary,
+        focusTopics,
+        ...(typeof tabSwitchCount === 'number' ? { tabSwitchCount } : {}),
+        ...(typeof terminatedByProctor === 'boolean' ? { terminatedByProctor } : {}),
       });
-      attemptId = attempt?.id ?? null;
-    } catch {
-      attemptId = null; // table doesn't exist yet
+    } catch (err) {
+      console.error('Failed to persist quiz attempt:', err);
+      attemptId = null;
     }
 
-    // ── Update UserProgress per skill (graceful) ─────────────────────
+    // ── Update UserProgress per skill ────────────────────────────────
     try {
       const skillStats: Record<string, { attempted: number; correct: number }> = {};
       for (const ans of gradedAnswers) {
@@ -522,42 +498,29 @@ export async function POST(request: Request) {
       }
 
       for (const [skill, counts] of Object.entries(skillStats)) {
-        const existing = await db.userProgress?.findUnique?.({
-          where: { userId_skill: { userId: authUser.id, skill } },
-        });
+        const existing = await getUserProgress(authUser.id, skill);
 
         if (existing) {
           const newAttempted = existing.totalAttempted + counts.attempted;
           const newCorrect = existing.totalCorrect + counts.correct;
-          const newAccuracy =
-            newAttempted > 0 ? (newCorrect / newAttempted) * 100 : 0;
+          const newAccuracy = newAttempted > 0 ? (newCorrect / newAttempted) * 100 : 0;
 
-          await db.userProgress.update({
-            where: { id: existing.id },
-            data: {
-              totalAttempted: newAttempted,
-              totalCorrect: newCorrect,
-              accuracy: newAccuracy,
-              lastPracticed: new Date(),
-            },
+          await upsertUserProgress(authUser.id, skill, {
+            totalAttempted: newAttempted,
+            totalCorrect: newCorrect,
+            accuracy: newAccuracy,
           });
         } else {
-          const accuracy =
-            counts.attempted > 0 ? (counts.correct / counts.attempted) * 100 : 0;
-          await db.userProgress?.create?.({
-            data: {
-              userId: authUser.id,
-              skill,
-              totalAttempted: counts.attempted,
-              totalCorrect: counts.correct,
-              accuracy,
-              lastPracticed: new Date(),
-            },
+          const accuracy = counts.attempted > 0 ? (counts.correct / counts.attempted) * 100 : 0;
+          await upsertUserProgress(authUser.id, skill, {
+            totalAttempted: counts.attempted,
+            totalCorrect: counts.correct,
+            accuracy,
           });
         }
       }
-    } catch {
-      // UserProgress table doesn't exist yet — skip
+    } catch (err) {
+      console.error('Failed to update user progress:', err);
     }
 
     return NextResponse.json({
@@ -568,7 +531,6 @@ export async function POST(request: Request) {
       aiSummary,
       focusTopics,
       wrongCount: wrongAnswers.length,
-      // Full per-question review — included so the results page can show answer breakdown
       gradedAnswers: gradedAnswers.map((ga) => {
         const q = questions[ga.questionIndex];
         return {

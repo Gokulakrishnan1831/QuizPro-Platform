@@ -1,23 +1,24 @@
-import { createClient } from '@/lib/supabase/server';
-import prisma from '@/lib/prisma';
+import { cookies } from 'next/headers';
+import { adminAuth } from '@/lib/firebase/admin';
+import { getUserById } from '@/lib/firebase/db';
 
 /**
- * Resolves the current authenticated user from the Supabase session
- * and fetches their full profile from the Prisma User table.
+ * Resolves the current authenticated user from the Firebase session cookie
+ * and fetches their full profile from Firestore.
  *
- * Returns `null` if not authenticated or if the user row doesn't exist.
+ * Returns `null` if not authenticated or if the user doc doesn't exist.
  */
 export async function getAuthenticatedUser() {
-    const supabase = await createClient();
-    const {
-        data: { user: authUser },
-    } = await supabase.auth.getUser();
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get('__session')?.value;
 
-    if (!authUser) return null;
+    if (!sessionCookie) return null;
 
-    const dbUser = await prisma.user.findUnique({
-        where: { id: authUser.id },
-    });
-
-    return dbUser;
+    try {
+        const decoded = await adminAuth.verifySessionCookie(sessionCookie, true);
+        const dbUser = await getUserById(decoded.uid);
+        return dbUser;
+    } catch {
+        return null;
+    }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import prisma from '@/lib/prisma';
+import { getAuthenticatedUser } from '@/lib/auth';
+import { db } from '@/lib/firebase/admin';
+import { COLLECTIONS } from '@/lib/firebase/collections';
 import { buildLeaderboardEntries, type SkillFilter } from '@/lib/leaderboard/ranking';
 
 /**
@@ -26,41 +27,35 @@ export async function GET(request: Request) {
   }
 
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    const currentUserId = user?.id ?? null;
-    const db = prisma as any;
+    const authUser = await getAuthenticatedUser();
+    const currentUserId = authUser?.id ?? null;
 
     try {
-      const attempts =
-        (await db.quizAttempt?.findMany?.({
-          where: {
-            user: {
-              profileType,
-            },
-            ...(skill === 'ALL'
-              ? {}
-              : {
-                  OR: [{ quiz: { skill } }, { quiz: { skill: null } }],
-                }),
-          },
-          include: {
-            quiz: {
-              select: {
-                skill: true,
-                questions: true,
-              },
-            },
-          },
-          orderBy: {
-            completedAt: 'desc',
-          },
-        })) ?? [];
+      // Fetch all quiz attempts + their quizzes for leaderboard computation
+      const attemptsSnap = await db.collection(COLLECTIONS.QUIZ_ATTEMPTS).get();
+      const allAttempts: any[] = [];
 
-      const entries = buildLeaderboardEntries(attempts, currentUserId, skill, limit);
+      for (const doc of attemptsSnap.docs) {
+        const attempt = doc.data();
+        // Get the user to check profileType
+        const userSnap = await db.collection(COLLECTIONS.USERS).doc(attempt.userId).get();
+        const user = userSnap.data();
+        if (!user || user.profileType !== profileType) continue;
+
+        // Get quiz for skill filter
+        const quizSnap = await db.collection(COLLECTIONS.QUIZZES).doc(attempt.quizId).get();
+        const quiz = quizSnap.data();
+
+        if (skill !== 'ALL' && quiz?.skill !== skill && quiz?.skill !== null) continue;
+
+        allAttempts.push({
+          ...attempt,
+          id: doc.id,
+          quiz: quiz ? { skill: quiz.skill, questions: quiz.questions } : { skill: null, questions: [] },
+        });
+      }
+
+      const entries = buildLeaderboardEntries(allAttempts, currentUserId, skill, limit);
       return NextResponse.json({
         entries,
         totalUsers: entries.length,

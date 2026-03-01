@@ -1,13 +1,31 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
+import { adminAuth } from '@/lib/firebase/admin';
 
 /**
  * POST /api/auth/logout
  *
- * Signs the user out of Supabase and clears the session cookie.
+ * Clears the Firebase session cookie and revokes refresh tokens.
  */
 export async function POST() {
-    const supabase = await createClient();
-    await supabase.auth.signOut();
-    return NextResponse.json({ success: true });
+    try {
+        const cookieStore = await cookies();
+        const sessionCookie = cookieStore.get('__session')?.value;
+
+        if (sessionCookie) {
+            try {
+                const decoded = await adminAuth.verifySessionCookie(sessionCookie);
+                await adminAuth.revokeRefreshTokens(decoded.uid);
+            } catch {
+                // Session might already be invalid — that's fine
+            }
+        }
+
+        cookieStore.delete('__session');
+
+        return NextResponse.json({ success: true }, { status: 200 });
+    } catch (error: any) {
+        console.error('Logout error:', error);
+        return NextResponse.json({ error: 'Logout failed' }, { status: 500 });
+    }
 }

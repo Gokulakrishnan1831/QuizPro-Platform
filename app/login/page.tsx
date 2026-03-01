@@ -1,13 +1,22 @@
 'use client';
 
-import { createClient } from '@/lib/supabase/client';
+import { auth } from '@/lib/firebase/client';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { motion } from 'framer-motion';
 import { Zap, Mail, Lock, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh' }} />}>
+      <LoginContent />
+    </Suspense>
+  );
+}
+
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get('redirect') || '/dashboard';
@@ -17,33 +26,42 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const supabase = createClient();
-
-  // ── Email + Password Login ────────────────────────────────────────
-
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const credential = await signInWithEmailAndPassword(auth, email, password);
+      const idToken = await credential.user.getIdToken();
 
-    if (signInError) {
-      setError(signInError.message);
+      // Create server session cookie
+      const res = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to create session');
+      }
+
+      router.push(redirectTo);
+      router.refresh();
+    } catch (err: any) {
+      let msg = err.message || 'Login failed';
+      if (msg.includes('wrong-password') || msg.includes('invalid-credential')) {
+        msg = 'Invalid email or password.';
+      } else if (msg.includes('user-not-found')) {
+        msg = 'No account found with this email.';
+      } else if (msg.includes('too-many-requests')) {
+        msg = 'Too many failed attempts. Please try again later.';
+      }
+      setError(msg);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    router.push(redirectTo);
-    router.refresh();
   };
-
-
-
-  // ── UI ────────────────────────────────────────────────────────────
 
   return (
     <div
@@ -100,8 +118,6 @@ export default function LoginPage() {
             {error}
           </div>
         )}
-
-
 
         {/* Email form */}
         <form

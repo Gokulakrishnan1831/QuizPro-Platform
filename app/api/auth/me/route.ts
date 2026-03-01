@@ -1,24 +1,22 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import prisma from '@/lib/prisma';
+import { getAuthenticatedUser } from '@/lib/auth';
 
+/**
+ * GET /api/auth/me
+ *
+ * Returns the currently authenticated user's profile from Firestore.
+ */
 export async function GET() {
     try {
-        const supabase = await createClient();
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getAuthenticatedUser();
 
         if (!user) {
-            return NextResponse.json({ user: null }, { status: 401 });
+            return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
         }
 
-        const dbUser = await prisma.user.findUnique({
-            where: { id: user.id },
-            select: { id: true, email: true, name: true }
-        });
-
-        return NextResponse.json({ user: dbUser });
-    } catch (error) {
-        console.error('[auth/me] error:', error);
-        return NextResponse.json({ user: null }, { status: 500 });
+        return NextResponse.json({ user }, { status: 200 });
+    } catch (error: any) {
+        console.error('Auth /me error:', error);
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }

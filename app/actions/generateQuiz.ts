@@ -1,7 +1,7 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
-import prisma from '@/lib/prisma';
+import { getAuthenticatedUser } from '@/lib/auth';
+import { getUserById, createQuiz, updateUser, getQuestionsByFilter } from '@/lib/firebase/db';
 import { groqQuizCompletion } from '@/lib/ai/groq-client';
 import {
     buildQuizPrompt,
@@ -29,12 +29,12 @@ import { researchAndGenerateQuestions } from '@/lib/interview/research-agent';
 
 /* ─── Rate-limit map (in-memory for now) ────────────────────── */
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
+const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMITS: Record<string, number> = {
     FREE: 2,
     BASIC: 5,
     PRO: 15,
-    ELITE: 999, // effectively unlimited
+    ELITE: 999,
 };
 
 function checkRateLimit(userId: string, tier: string): boolean {
@@ -83,25 +83,14 @@ export async function generateQuiz(
 ): Promise<GenerateQuizResult> {
     try {
         // 1. Authenticate
-        const supabase = await createClient();
-        const {
-            data: { user: authUser },
-        } = await supabase.auth.getUser();
+        const authUser = await getAuthenticatedUser();
 
         if (!authUser) {
             return { success: false, error: 'Unauthorized — please sign in.' };
         }
 
-        // Cast to `any` — User/Quiz/QuizAttempt/UserProgress/Leaderboard
-        // tables require `prisma db push` to create.
-        const db = prisma as any;
-
-        const dbUser = await db.user?.findUnique?.({
-            where: { id: authUser.id },
-        }).catch(() => null);
-
-        const tier = dbUser?.subscriptionTier ?? 'FREE';
-        const quizzesRemaining = dbUser?.quizzesRemaining ?? 999;
+        const tier = authUser.subscriptionTier ?? 'FREE';
+        const quizzesRemaining = authUser.quizzesRemaining ?? 999;
 
         // 2. Rate-limit check
         if (!checkRateLimit(authUser.id, tier)) {
@@ -119,20 +108,19 @@ export async function generateQuiz(
             };
         }
 
-        // 4. Merge defaults — use new profileType from user record
-        const profileType: ProfileType = dbUser?.profileType ?? 'FRESHER';
-        const persona: PersonaType = params.persona ?? (dbUser?.persona as PersonaType) ?? 'FRESHER';
+        // 4. Merge defaults
+        const profileType: ProfileType = authUser.profileType ?? 'FRESHER';
+        const persona: PersonaType = params.persona ?? (authUser.persona as PersonaType) ?? 'FRESHER';
         const skills: SkillType[] = params.skills?.length
             ? params.skills
-            : (dbUser?.toolStack as SkillType[]) ?? ['SQL', 'EXCEL', 'POWERBI'];
+            : (authUser.toolStack as SkillType[]) ?? ['SQL', 'EXCEL', 'POWERBI'];
         const questionCount = params.questionCount ?? 10;
         const includeHandsOn = params.includeHandsOn ?? false;
         const effectiveIncludeHandsOn = includeHandsOn && skills.some((s) => s !== 'POWERBI');
-        const quizGoal: QuizGoalType = params.quizGoal ?? (dbUser?.quizGoal as QuizGoalType) ?? 'PRACTICE';
+        const quizGoal: QuizGoalType = params.quizGoal ?? (authUser.quizGoal as QuizGoalType) ?? 'PRACTICE';
 
-        // Use stored JD/Company if in interview prep mode and no overrides provided
-        const jdText = params.jdText ?? (quizGoal === 'INTERVIEW_PREP' ? dbUser?.upcomingJD : undefined);
-        const jdCompany = params.jdCompany ?? (quizGoal === 'INTERVIEW_PREP' ? dbUser?.upcomingCompany : undefined);
+        const jdText = params.jdText ?? (quizGoal === 'INTERVIEW_PREP' ? authUser.upcomingJD : undefined);
+        const jdCompany = params.jdCompany ?? (quizGoal === 'INTERVIEW_PREP' ? authUser.upcomingCompany : undefined);
         const normalizedSkills = skills.map((s) => String(s).toUpperCase()) as SkillType[];
 
         let interviewPatterns: Awaited<ReturnType<typeof fetchCompanyInterviewPatterns>> = [];
@@ -153,14 +141,14 @@ export async function generateQuiz(
             }
         }
 
-        // 5. Build prompt — now using profileType instead of persona
+        // 5. Build prompt
         const prompt = effectiveIncludeHandsOn
             ? buildMixedQuizPrompt({
                 profileType,
                 skills: normalizedSkills,
                 numQuestions: questionCount,
                 handsOnRatio: 0.3,
-                experienceYears: dbUser?.experienceYears ?? undefined,
+                experienceYears: authUser.experienceYears ?? undefined,
                 quizGoal,
                 jdText,
                 jdCompany,
@@ -170,7 +158,7 @@ export async function generateQuiz(
                 profileType,
                 skills: normalizedSkills,
                 numQuestions: questionCount,
-                experienceYears: dbUser?.experienceYears ?? undefined,
+                experienceYears: authUser.experienceYears ?? undefined,
                 quizGoal,
                 jdText,
                 jdCompany,
@@ -182,7 +170,6 @@ export async function generateQuiz(
         let usedFallback = false;
         let generationSource: 'ai' | 'question_bank' | 'seed' | 'interview_cache' | 'interview_research' = 'ai';
 
-        // ── Interview Prep: cache-first question lookup ──────────
         if (quizGoal === 'INTERVIEW_PREP' && jdCompany) {
             const role = extractRole(jdText);
 
@@ -210,7 +197,7 @@ export async function generateQuiz(
                                 : questionCount,
                             includeHandsOn: effectiveIncludeHandsOn,
                             profileType,
-                            experienceYears: dbUser?.experienceYears ?? undefined,
+                            experienceYears: authUser.experienceYears ?? undefined,
                             existingPatterns: interviewPatterns,
                         });
 
@@ -231,12 +218,12 @@ export async function generateQuiz(
                     }
                 }
             } catch {
-                // Cache lookup failed — fall through to normal generation
+                // Cache lookup failed — fall through
             }
         }
 
-        // ── Normal generation (non-interview or fallback) ────────
-        // @ts-ignore — questions may already be set above
+        // Normal generation
+        // @ts-ignore
         if (!questions || !Array.isArray(questions) || questions.length === 0) {
             try {
                 const raw = await groqQuizCompletion(prompt);
@@ -252,21 +239,17 @@ export async function generateQuiz(
 
                 questions = postProcessQuestions(questions);
 
-                // Cache interview prep questions for future use
                 if (quizGoal === 'INTERVIEW_PREP' && jdCompany) {
                     const role = extractRole(jdText);
                     void cacheInterviewQuestions({ company: jdCompany, role, questions, jdText });
                 }
             } catch {
-                // Fallback 1: Prisma question bank
+                // Fallback 1: Firestore question bank
                 try {
-                    const bankQuestions = await (prisma as any).question?.findMany?.({
-                        take: questionCount,
-                        where: {
-                            skill: { in: skills },
-                        },
-                        orderBy: { createdAt: 'desc' },
-                    }) ?? [];
+                    const bankQuestions = await getQuestionsByFilter({
+                        skill: normalizedSkills[0],
+                        limit: questionCount,
+                    });
 
                     if (bankQuestions.length > 0) {
                         usedFallback = true;
@@ -300,31 +283,27 @@ export async function generateQuiz(
             }
         }
 
-        // Final safety net: post-process all questions regardless of source
         questions = postProcessQuestions(questions);
 
-        // 7. Calculate timer (deterministic 5-minute rounding)
+        // 7. Calculate timer
         const timerMins = calculateQuizTimer(questionCount, effectiveIncludeHandsOn, profileType);
 
         // 8. Determine single-skill for leaderboard
         const uniqueSkills = [...new Set(questions.map((q: any) => q.skill))];
         const singleSkill = uniqueSkills.length === 1 ? uniqueSkills[0] : null;
 
-        // 9. Persist quiz (graceful — Quiz table may not exist yet)
+        // 9. Persist quiz to Firestore
         let quizId: string;
         try {
-            const quiz = await db.quiz.create({
-                data: {
-                    persona,
-                    skill: singleSkill,
-                    quizGoal,
-                    jdCompany: jdCompany ?? null,
-                    jdText: jdText ?? null,
-                    timerMins,
-                    questions,
-                },
+            quizId = await createQuiz({
+                persona,
+                skill: singleSkill,
+                quizGoal,
+                jdCompany: jdCompany ?? null,
+                jdText: jdText ?? null,
+                timerMins,
+                questions,
             });
-            quizId = quiz.id;
         } catch {
             quizId = crypto.randomUUID();
         }
@@ -350,14 +329,11 @@ export async function generateQuiz(
 
         // 10. Decrement remaining quizzes
         try {
-            if (dbUser) {
-                await db.user.update({
-                    where: { id: dbUser.id },
-                    data: { quizzesRemaining: { decrement: 1 } },
-                });
-            }
+            await updateUser(authUser.id, {
+                quizzesRemaining: Math.max(0, quizzesRemaining - 1),
+            });
         } catch {
-            // ignore — table may not exist
+            // ignore
         }
 
         return {

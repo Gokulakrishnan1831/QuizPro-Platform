@@ -1,16 +1,12 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { Timestamp } from 'firebase-admin/firestore';
+import { upsertUser } from '@/lib/firebase/db';
 
 /**
  * POST /api/auth/sync-profile
  *
- * Called after Supabase signup to persist the user's profile (persona,
- * experience, name, profileType, education, resume, etc.) into the
- * Prisma User table. The row is upserted so that calling this endpoint
- * is idempotent.
- *
- * Gracefully degrades: if the new columns (profileType, toolStack, etc.)
- * haven't been migrated yet, falls back to core fields only.
+ * Called after signup to persist the user's full profile into Firestore.
+ * Upserts so it's idempotent.
  */
 export async function POST(request: Request) {
     try {
@@ -40,84 +36,30 @@ export async function POST(request: Request) {
             );
         }
 
-        const db = prisma as any;
+        // Users always start on FREE tier.
+        // Paid plans (BASIC, PRO, ELITE) only activate after admin approves the payment.
+        const requestedTier = subscriptionTier || 'FREE';
+        const isPaidPlan = requestedTier !== 'FREE';
 
-        // ── Attempt 1: Full upsert with all new fields ──────────────────
-        try {
-            const user = await db.user.upsert({
-                where: { id },
-                update: {
-                    email,
-                    name: name || null,
-                    persona: persona || null,
-                    experienceYears: experienceYears ?? null,
-                    profileType: profileType || null,
-                    resumeUrl: resumeUrl || null,
-                    educationDetails: educationDetails || null,
-                    toolStack: toolStack || null,
-                    quizGoal: quizGoal || null,
-                    upcomingCompany: upcomingCompany || null,
-                    upcomingJD: upcomingJD || null,
-                    interviewDate: interviewDate ? new Date(interviewDate) : null,
-                },
-                create: {
-                    id,
-                    email,
-                    name: name || null,
-                    persona: persona || null,
-                    experienceYears: experienceYears ?? null,
-                    profileType: profileType || null,
-                    resumeUrl: resumeUrl || null,
-                    educationDetails: educationDetails || null,
-                    toolStack: toolStack || null,
-                    quizGoal: quizGoal || null,
-                    upcomingCompany: upcomingCompany || null,
-                    upcomingJD: upcomingJD || null,
-                    interviewDate: interviewDate ? new Date(interviewDate) : null,
-                    subscriptionTier: 'FREE',
-                    quizzesRemaining: 1,
-                },
-            });
-
-            return NextResponse.json({ user }, { status: 200 });
-        } catch (fullErr: any) {
-            // If the error is about unknown fields, fall back to core fields
-            if (
-                fullErr?.message?.includes('Unknown argument') ||
-                fullErr?.message?.includes('Unknown field') ||
-                fullErr?.code === 'P2009'
-            ) {
-                console.warn(
-                    'sync-profile: New fields not yet migrated, falling back to core fields.',
-                    fullErr.message,
-                );
-            } else {
-                // Re-throw non-schema errors (e.g. connection issues)
-                throw fullErr;
-            }
-        }
-
-        // ── Attempt 2: Core fields only (pre-migration fallback) ────────
-        const user = await db.user.upsert({
-            where: { id },
-            update: {
-                email,
-                name: name || null,
-                persona: persona || null,
-                experienceYears: experienceYears ?? null,
-            },
-            create: {
-                id,
-                email,
-                name: name || null,
-                persona: persona || null,
-                experienceYears: experienceYears ?? null,
-                subscriptionTier: 'FREE',
-                quizzesRemaining: 1,
-            },
+        await upsertUser(id, {
+            email,
+            name: name || null,
+            persona: persona || null,
+            experienceYears: experienceYears ?? null,
+            profileType: profileType || null,
+            resumeUrl: resumeUrl || null,
+            educationDetails: educationDetails || null,
+            toolStack: toolStack || null,
+            quizGoal: quizGoal || null,
+            upcomingCompany: upcomingCompany || null,
+            upcomingJD: upcomingJD || null,
+            interviewDate: interviewDate ? Timestamp.fromDate(new Date(interviewDate)) : null,
+            subscriptionTier: 'FREE',
+            quizzesRemaining: 1,
+            ...(isPaidPlan ? { requestedTier } : {}),
         });
 
-        return NextResponse.json({ user, migrationPending: true }, { status: 200 });
+        return NextResponse.json({ success: true }, { status: 200 });
     } catch (error: any) {
         console.error('sync-profile error:', error);
         return NextResponse.json(

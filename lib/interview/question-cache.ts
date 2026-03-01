@@ -2,11 +2,10 @@
  * lib/interview/question-cache.ts
  *
  * Cache-first lookup and storage for company-specific interview questions.
- * Questions are keyed by normalized_company + normalized_role + skill.
+ * Questions are keyed by normalizedCompany + normalizedRole + skill.
  */
 
-import prisma from '@/lib/prisma';
-import { ensureTables } from '@/lib/db-init';
+import { getCachedInterviewQuestions as firestoreGetCached, createManyInterviewQuestions, incrementInterviewQuestionServed } from '@/lib/firebase/db';
 import { normalizeCompanyName } from './retrieval';
 import { extractRole, normalizeRole } from './role-utils';
 import crypto from 'crypto';
@@ -33,10 +32,6 @@ export interface CacheLookupResult {
 
 /**
  * Look up cached interview questions for a given company + role + skills.
- *
- * - FULL HIT: ≥ questionCount questions exist and are fresh → return cached
- * - PARTIAL HIT: some questions exist but < questionCount → return partial
- * - MISS: no questions found or all stale → return empty
  */
 export async function getCachedInterviewQuestions(params: {
     company: string;
@@ -53,41 +48,36 @@ export async function getCachedInterviewQuestions(params: {
         return { questions: [], cacheHit: false, partialHit: false, cached: 0, company: normalizedCompany, role: normalizedRole };
     }
 
-    await ensureTables();
-    const db = prisma as any;
-
-    const cutoffDate = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
-    const skillList = skills.map((s) => s.toUpperCase());
-
     try {
-        const rows = await db.$queryRawUnsafe(
-            `SELECT id, skill, question_type, question_data, source_context, difficulty
-         FROM "InterviewQuestionBank"
-        WHERE normalized_company = $1
-          AND normalized_role = $2
-          AND skill = ANY($3::text[])
-          AND is_active = TRUE
-          AND updated_at >= $4::timestamptz
-        ORDER BY difficulty ASC, created_at DESC
-        LIMIT $5`,
-            normalizedCompany,
-            normalizedRole,
-            skillList,
-            cutoffDate,
-            questionCount * 2, // fetch extra for random selection
-        );
+        // Query Firestore for each skill
+        const allDocs: any[] = [];
+        for (const skill of skills) {
+            const docs = await firestoreGetCached({
+                normalizedCompany,
+                normalizedRole,
+                skill: skill.toUpperCase(),
+                isActive: true,
+            });
+            allDocs.push(...docs);
+        }
 
-        const questions: CachedQuestion[] = (Array.isArray(rows) ? rows : []).map((r: any) => ({
-            id: String(r.id),
-            skill: String(r.skill),
-            questionType: String(r.question_type),
-            questionData: typeof r.question_data === 'string' ? JSON.parse(r.question_data) : r.question_data,
-            sourceContext: String(r.source_context ?? 'ai_generated'),
-            difficulty: Number(r.difficulty ?? 5),
+        // Filter by age
+        const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+        const freshDocs = allDocs.filter((d) => {
+            const updated = d.updatedAt?.toDate?.()?.getTime?.() ?? 0;
+            return updated >= cutoff;
+        });
+
+        const questions: CachedQuestion[] = freshDocs.map((d) => ({
+            id: d.id,
+            skill: String(d.skill),
+            questionType: String(d.questionType),
+            questionData: d.questionData,
+            sourceContext: String(d.sourceContext ?? 'ai_generated'),
+            difficulty: Number(d.difficulty ?? 5),
         }));
 
         if (questions.length >= questionCount) {
-            // Full hit — shuffle and take requested count
             const shuffled = questions.sort(() => Math.random() - 0.5).slice(0, questionCount);
             return {
                 questions: shuffled,
@@ -132,8 +122,7 @@ export async function getCachedInterviewQuestions(params: {
 }
 
 /**
- * Store generated interview questions into the cache.
- * Silently skips duplicates (same company+role+skill with same question content hash).
+ * Store generated interview questions into the Firestore cache.
  */
 export async function cacheInterviewQuestions(params: {
     company: string;
@@ -145,91 +134,41 @@ export async function cacheInterviewQuestions(params: {
     const normalizedCompany = normalizeCompanyName(company);
     if (!normalizedCompany || questions.length === 0) return 0;
 
-    await ensureTables();
-    const db = prisma as any;
-
     const jdHash = jdText
         ? crypto.createHash('sha256').update(jdText.trim().toLowerCase()).digest('hex').slice(0, 16)
         : null;
 
-    let stored = 0;
+    try {
+        const docs = questions.map((q) => ({
+            normalizedCompany,
+            companyDisplay: company,
+            normalizedRole: role.normalized,
+            roleDisplay: role.display,
+            skill: String(q.skill ?? 'SQL').toUpperCase(),
+            questionType: String(q.type ?? 'MCQ').toUpperCase(),
+            questionData: typeof q === 'string' ? JSON.parse(q) : q,
+            sourceContext: String(q.source_context ?? q.sourceContext ?? 'ai_generated'),
+            difficulty: typeof q.difficulty === 'number' ? q.difficulty : 5,
+            isActive: true,
+            jdHash,
+        }));
 
-    for (const q of questions) {
-        try {
-            const skill = String(q.skill ?? 'SQL').toUpperCase();
-            const questionType = String(q.type ?? 'MCQ').toUpperCase();
-            const questionData = typeof q === 'string' ? JSON.parse(q) : q;
-            const sourceContext = String(q.source_context ?? q.sourceContext ?? 'ai_generated');
-            const difficulty = typeof q.difficulty === 'number' ? q.difficulty : 5;
-
-            // Check for existing duplicate (same company+role+skill+content hash)
-            const contentHash = crypto
-                .createHash('md5')
-                .update(JSON.stringify(questionData))
-                .digest('hex');
-
-            const existing = await db.$queryRawUnsafe(
-                `SELECT id FROM "InterviewQuestionBank"
-          WHERE normalized_company = $1
-            AND normalized_role = $2
-            AND skill = $3
-            AND md5(question_data::text) = $4
-          LIMIT 1`,
-                normalizedCompany,
-                role.normalized,
-                skill,
-                contentHash,
-            );
-
-            if (Array.isArray(existing) && existing.length > 0) {
-                // Update timestamp on existing entry to refresh staleness
-                await db.$executeRawUnsafe(
-                    `UPDATE "InterviewQuestionBank" SET updated_at = NOW() WHERE id = $1`,
-                    existing[0].id,
-                );
-                continue;
-            }
-
-            await db.$executeRawUnsafe(
-                `INSERT INTO "InterviewQuestionBank"
-          (normalized_company, company_display, normalized_role, role_display,
-           skill, question_type, question_data, source_context, difficulty, jd_hash)
-         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10)`,
-                normalizedCompany,
-                company,
-                role.normalized,
-                role.display,
-                skill,
-                questionType,
-                JSON.stringify(questionData),
-                sourceContext,
-                difficulty,
-                jdHash,
-            );
-            stored++;
-        } catch (err) {
-            // Skip individual failures (e.g., unique constraint violations)
-            console.error('[question-cache] insert failed for question:', err);
-        }
+        return await createManyInterviewQuestions(docs);
+    } catch (err) {
+        console.error('[question-cache] batch insert failed:', err);
+        return 0;
     }
-
-    return stored;
 }
 
 /**
- * Increment the `times_served` counter for a set of cached question IDs.
- * Non-blocking — failures are silently ignored.
+ * Increment the `timesServed` counter for cached question IDs.
  */
 export async function incrementServedCount(questionIds: string[]): Promise<void> {
     if (questionIds.length === 0) return;
 
-    const db = prisma as any;
     try {
-        await db.$executeRawUnsafe(
-            `UPDATE "InterviewQuestionBank"
-         SET times_served = times_served + 1
-       WHERE id = ANY($1::uuid[])`,
-            questionIds,
+        await Promise.all(
+            questionIds.map((id) => incrementInterviewQuestionServed(id))
         );
     } catch {
         // Non-blocking

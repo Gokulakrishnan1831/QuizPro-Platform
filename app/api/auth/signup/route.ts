@@ -1,18 +1,17 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import prisma from '@/lib/prisma';
+import { adminAuth } from '@/lib/firebase/admin';
+import { createUser } from '@/lib/firebase/db';
 
 /**
  * POST /api/auth/signup
  *
- * Server-side email signup via Supabase Auth, then syncs to Prisma.
- * The browser signup page calls the client-side SDK directly, but this
- * route exists for programmatic / API consumers.
+ * Server-side signup: creates Firebase Auth user + Firestore profile.
+ * The client can also sign up directly via Firebase client SDK,
+ * but this route exists for programmatic / API consumers.
  */
 export async function POST(request: Request) {
   try {
-    const { email, password, name, persona, experienceYears } =
-      await request.json();
+    const { email, password, name, persona, experienceYears } = await request.json();
 
     if (!email || !password) {
       return NextResponse.json(
@@ -21,42 +20,36 @@ export async function POST(request: Request) {
       );
     }
 
-    const supabase = await createClient();
-    const { data, error } = await supabase.auth.signUp({
+    // Create Firebase Auth user
+    const userRecord = await adminAuth.createUser({
       email,
       password,
-      options: { data: { full_name: name, persona } },
+      displayName: name || undefined,
     });
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-
-    if (data.user) {
-      await prisma.user.upsert({
-        where: { id: data.user.id },
-        update: { email, name },
-        create: {
-          id: data.user.id,
-          email,
-          name: name || null,
-          persona: persona || null,
-          experienceYears: experienceYears ?? null,
-          subscriptionTier: 'FREE',
-          quizzesRemaining: 1,
-        },
-      });
-    }
+    // Create Firestore user profile
+    await createUser(userRecord.uid, {
+      email,
+      name: name || null,
+      persona: persona || null,
+      experienceYears: experienceYears ?? null,
+      subscriptionTier: 'FREE',
+      quizzesRemaining: 1,
+    });
 
     return NextResponse.json(
-      { user: data.user, session: data.session },
+      { user: { uid: userRecord.uid, email: userRecord.email } },
       { status: 201 },
     );
   } catch (error: any) {
     console.error('Signup API error:', error);
+    const message =
+      error.code === 'auth/email-already-exists'
+        ? 'An account with this email already exists.'
+        : error.message || 'Internal server error';
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
-      { status: 500 },
+      { error: message },
+      { status: error.code === 'auth/email-already-exists' ? 409 : 500 },
     );
   }
 }

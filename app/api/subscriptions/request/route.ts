@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { ensureTables } from '@/lib/db-init';
-import prisma from '@/lib/prisma';
+import { getAuthenticatedUser } from '@/lib/auth';
+import { createPaymentRequest } from '@/lib/firebase/db';
+import { db } from '@/lib/firebase/admin';
+import { COLLECTIONS } from '@/lib/firebase/collections';
 
 const PLAN_CONFIG: Record<string, { price: number; name: string; quizzes: number }> = {
     BASIC: { price: 99, name: 'Basic', quizzes: 3 },
@@ -12,14 +13,10 @@ const PLAN_CONFIG: Record<string, { price: number; name: string; quizzes: number
 /**
  * POST /api/subscriptions/request
  * Body: { tier, upiTransactionId, screenshotBase64? }
- *
- * Creates a pending payment request that admin will approve.
  */
 export async function POST(request: Request) {
     try {
-        const supabase = await createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-
+        const user = await getAuthenticatedUser();
         if (!user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
@@ -38,42 +35,34 @@ export async function POST(request: Request) {
             );
         }
 
-        await ensureTables();
-        const db = prisma as any;
+        // Check for existing pending request
+        const existingSnap = await db.collection(COLLECTIONS.PAYMENT_REQUESTS)
+            .where('userId', '==', user.id)
+            .where('tier', '==', String(tier).toUpperCase())
+            .where('status', '==', 'pending')
+            .limit(1)
+            .get();
 
-        // Check if user already has a pending request for this tier
-        const existing = await db.$queryRawUnsafe(
-            `SELECT id FROM "PaymentRequest"
-       WHERE user_id = $1 AND tier = $2 AND status = 'pending'
-       LIMIT 1`,
-            user.id, tier
-        );
-
-        if (existing.length > 0) {
+        if (!existingSnap.empty) {
             return NextResponse.json(
                 { error: 'You already have a pending payment request for this tier. Please wait for admin approval.' },
                 { status: 409 }
             );
         }
 
-        // Store the payment request
-        const result = await db.$queryRawUnsafe(
-            `INSERT INTO "PaymentRequest"
-         (user_id, user_email, user_name, tier, amount, upi_transaction_id, screenshot_base64)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id`,
-            user.id,
-            user.email,
-            user.user_metadata?.full_name ?? null,
-            String(tier).toUpperCase(),
-            plan.price,
-            String(upiTransactionId).trim(),
-            screenshotBase64 ?? null,
-        );
+        const requestId = await createPaymentRequest({
+            userId: user.id,
+            userEmail: user.email,
+            userName: user.name ?? null,
+            tier: String(tier).toUpperCase(),
+            amount: plan.price,
+            upiTransactionId: String(upiTransactionId).trim(),
+            screenshotBase64: screenshotBase64 ?? null,
+        });
 
         return NextResponse.json({
             success: true,
-            requestId: result[0]?.id,
+            requestId,
             message: `Payment request submitted for ${plan.name} plan. Admin will verify and upgrade your account within 24 hours.`,
         });
     } catch (err: any) {
@@ -84,28 +73,21 @@ export async function POST(request: Request) {
 
 /**
  * GET /api/subscriptions/request
- * Returns the current user's payment request history.
  */
 export async function GET() {
     try {
-        const supabase = await createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-
+        const user = await getAuthenticatedUser();
         if (!user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        await ensureTables();
-        const db = prisma as any;
+        const snap = await db.collection(COLLECTIONS.PAYMENT_REQUESTS)
+            .where('userId', '==', user.id)
+            .orderBy('createdAt', 'desc')
+            .limit(10)
+            .get();
 
-        const requests = await db.$queryRawUnsafe(
-            `SELECT id, tier, amount, upi_transaction_id, status, admin_notes, created_at, reviewed_at
-       FROM "PaymentRequest"
-       WHERE user_id = $1
-       ORDER BY created_at DESC
-       LIMIT 10`,
-            user.id
-        );
+        const requests = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
         return NextResponse.json({ requests });
     } catch (err: any) {

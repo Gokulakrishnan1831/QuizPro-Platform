@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import prisma from '@/lib/prisma';
-import { ensureTables } from '@/lib/db-init';
+import { Timestamp } from 'firebase-admin/firestore';
+import { getInterviewPatterns, getAllInterviewPatterns, createInterviewPattern } from '@/lib/firebase/db';
 import { normalizeCompanyName } from '@/lib/interview/retrieval';
 
 const JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'quizpro-admin-secret-key-change-in-production';
@@ -23,23 +23,7 @@ function asStringArray(value: unknown): string[] {
   return value.map((v) => String(v).trim()).filter((v) => v.length > 0);
 }
 
-type PatternInput = {
-  company: string;
-  role?: string;
-  skill?: string;
-  patternType?: string;
-  questionText: string;
-  difficulty?: number;
-  tags?: string[];
-  source: string;
-  sourceUrl?: string;
-  evidenceNote?: string;
-  isVerified?: boolean;
-  isActive?: boolean;
-  lastSeenAt?: string;
-};
-
-function normalizePatternInput(raw: any): PatternInput {
+function normalizePatternInput(raw: any) {
   return {
     company: String(raw?.company ?? '').trim(),
     role: raw?.role ? String(raw.role).trim() : 'Data Analyst',
@@ -65,7 +49,6 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await ensureTables();
     const { searchParams } = new URL(request.url);
     const company = searchParams.get('company')?.trim();
     const source = searchParams.get('source')?.trim();
@@ -73,36 +56,28 @@ export async function GET(request: NextRequest) {
     const limitParam = Number(searchParams.get('limit') ?? 50);
     const limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(200, limitParam)) : 50;
 
-    const clauses: string[] = ['1=1'];
-    const args: any[] = [];
+    let patterns;
 
     if (company) {
-      args.push(normalizeCompanyName(company));
-      clauses.push(`normalized_company = $${args.length}`);
+      patterns = await getInterviewPatterns({
+        normalizedCompany: normalizeCompanyName(company),
+        skill: skill || undefined,
+        limit,
+      });
+    } else {
+      patterns = await getAllInterviewPatterns();
     }
+
+    // Apply additional filters in memory
     if (source) {
-      args.push(source);
-      clauses.push(`source = $${args.length}`);
+      patterns = patterns.filter((p) => p.source === source);
     }
-    if (skill) {
-      args.push(skill);
-      clauses.push(`skill = $${args.length}`);
+    if (!company && skill) {
+      patterns = patterns.filter((p) => p.skill === skill);
     }
+    patterns = patterns.slice(0, limit);
 
-    args.push(limit);
-
-    const db = prisma as any;
-    const rows = await db.$queryRawUnsafe(
-      `SELECT id, company, role, skill, pattern_type, question_text, difficulty, tags,
-              source, source_url, evidence_note, is_verified, is_active, last_seen_at, created_at, updated_at
-         FROM "CompanyInterviewPattern"
-        WHERE ${clauses.join(' AND ')}
-        ORDER BY is_verified DESC, last_seen_at DESC, created_at DESC
-        LIMIT $${args.length}`,
-      ...args
-    );
-
-    return NextResponse.json({ patterns: rows ?? [] });
+    return NextResponse.json({ patterns });
   } catch (error: any) {
     console.error('[admin/interview-patterns] GET error:', error);
     return NextResponse.json({ error: 'Failed to fetch interview patterns' }, { status: 500 });
@@ -115,14 +90,12 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await ensureTables();
     const payload = await request.json();
     const items: any[] = Array.isArray(payload) ? payload : Array.isArray(payload?.patterns) ? payload.patterns : [payload];
     if (items.length === 0) {
       return NextResponse.json({ error: 'No patterns provided' }, { status: 400 });
     }
 
-    const db = prisma as any;
     const failures: Array<{ index: number; error: string }> = [];
     let successCount = 0;
 
@@ -138,39 +111,22 @@ export async function POST(request: NextRequest) {
           throw new Error('Invalid company');
         }
 
-        await db.$executeRawUnsafe(
-          `INSERT INTO "CompanyInterviewPattern"
-            (company, normalized_company, role, skill, pattern_type, question_text, difficulty, tags, source, source_url, evidence_note, is_verified, is_active, last_seen_at, updated_at)
-           VALUES
-            ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13, COALESCE($14::timestamptz, NOW()), NOW())
-           ON CONFLICT (normalized_company, question_text, source)
-           DO UPDATE SET
-             role = EXCLUDED.role,
-             skill = EXCLUDED.skill,
-             pattern_type = EXCLUDED.pattern_type,
-             difficulty = EXCLUDED.difficulty,
-             tags = EXCLUDED.tags,
-             source_url = EXCLUDED.source_url,
-             evidence_note = EXCLUDED.evidence_note,
-             is_verified = EXCLUDED.is_verified,
-             is_active = EXCLUDED.is_active,
-             last_seen_at = EXCLUDED.last_seen_at,
-             updated_at = NOW()`,
-          item.company,
+        await createInterviewPattern({
+          company: item.company,
           normalizedCompany,
-          item.role ?? 'Data Analyst',
-          item.skill ?? null,
-          item.patternType ?? 'QUESTION',
-          item.questionText,
-          item.difficulty ?? null,
-          JSON.stringify(item.tags ?? []),
-          item.source,
-          item.sourceUrl ?? null,
-          item.evidenceNote ?? null,
-          item.isVerified ?? false,
-          item.isActive ?? true,
-          item.lastSeenAt ?? null
-        );
+          role: item.role ?? 'Data Analyst',
+          skill: item.skill ?? null,
+          patternType: item.patternType ?? 'QUESTION',
+          questionText: item.questionText,
+          difficulty: item.difficulty ?? null,
+          tags: item.tags ?? [],
+          source: item.source,
+          sourceUrl: item.sourceUrl ?? null,
+          evidenceNote: item.evidenceNote ?? null,
+          isVerified: item.isVerified ?? false,
+          isActive: item.isActive ?? true,
+          lastSeenAt: item.lastSeenAt ? Timestamp.fromDate(new Date(item.lastSeenAt)) : Timestamp.now(),
+        });
         successCount++;
       } catch (error: any) {
         failures.push({ index: i, error: error?.message ?? 'Unknown error' });

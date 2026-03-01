@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import { ensureTables } from '@/lib/db-init';
+import { getAppSetting, setAppSetting } from '@/lib/firebase/db';
+import { db } from '@/lib/firebase/admin';
+import { COLLECTIONS } from '@/lib/firebase/collections';
 
 const JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'quizpro-admin-secret-key-change-in-production';
-import prisma from '@/lib/prisma';
 
 /**
  * GET /api/admin/settings — fetch all or specific settings
@@ -20,26 +21,20 @@ export async function GET(request: Request) {
     const key = searchParams.get('key');
 
     try {
-        await ensureTables();
-        const db = prisma as any;
-
         if (key) {
-            const rows = await db.$queryRawUnsafe(
-                `SELECT value FROM "AppSetting" WHERE key = $1 LIMIT 1`, key
-            );
-            return NextResponse.json({ value: rows[0]?.value ?? null });
+            const value = await getAppSetting(key);
+            return NextResponse.json({ value });
         }
 
-        // Return all settings (excluding large blobs for list view)
-        const rows = await db.$queryRawUnsafe(
-            `SELECT key,
-        CASE WHEN key = 'upi_qr_image' THEN '[image]' ELSE value END AS value,
-        updated_at
-       FROM "AppSetting"
-       ORDER BY key`
-        );
+        // Return all settings
+        const snap = await db.collection(COLLECTIONS.APP_SETTINGS).get();
+        const settings = snap.docs.map((d) => ({
+            key: d.id,
+            value: d.id === 'upi_qr_image' ? '[image]' : d.data().value,
+            updated_at: d.data().updatedAt,
+        }));
 
-        return NextResponse.json({ settings: rows });
+        return NextResponse.json({ settings });
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
     }
@@ -57,7 +52,6 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'key and value required' }, { status: 400 });
         }
 
-        // Validate image size (max 500KB base64)
         if (key === 'upi_qr_image' && String(value).length > 700_000) {
             return NextResponse.json(
                 { error: 'QR image too large. Please use a smaller image (max ~500KB).' },
@@ -65,17 +59,7 @@ export async function POST(request: Request) {
             );
         }
 
-        await ensureTables();
-        const db = prisma as any;
-
-        await db.$executeRawUnsafe(
-            `INSERT INTO "AppSetting" (key, value, updated_at)
-       VALUES ($1, $2, NOW())
-       ON CONFLICT (key)
-       DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-            String(key),
-            String(value),
-        );
+        await setAppSetting(String(key), String(value));
 
         return NextResponse.json({ success: true });
     } catch (err: any) {

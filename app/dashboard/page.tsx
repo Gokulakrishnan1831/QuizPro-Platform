@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import Navbar from '@/components/layout/Navbar';
 import { motion } from 'framer-motion';
 import {

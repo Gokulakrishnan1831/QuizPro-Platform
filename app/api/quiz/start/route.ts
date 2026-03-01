@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import prisma from '@/lib/prisma';
+import { getAuthenticatedUser } from '@/lib/auth';
+import { createQuiz, updateUser, getUserById } from '@/lib/firebase/db';
+import { getQuestionsByFilter } from '@/lib/firebase/db';
 import { groqQuizCompletion } from '@/lib/ai/groq-client';
 import { buildQuizPrompt, buildMixedQuizPrompt } from '@/lib/ai/prompts';
 import { postProcessQuestions } from '@/lib/ai/post-process';
@@ -22,42 +23,21 @@ import { researchAndGenerateQuestions } from '@/lib/interview/research-agent';
  * POST /api/quiz/start
  *
  * Generates a new quiz using Groq AI (with seed-question fallback)
- * and stores it. Returns the quiz ID so the client can navigate to
- * the playback page.
- *
- * Body: { persona, skills[], questionCount, jdText?, jdCompany? }
- *
- * NOTE: The User, Quiz, QuizAttempt, UserProgress, and Leaderboard models
- * are defined in schema.prisma but require `prisma db push` to create the
- * tables. Until then, the `as any` casts below are necessary. After running
- * `prisma db push && prisma generate`, remove the casts.
+ * and stores it in Firestore. Returns the quiz ID.
  */
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user: authUser },
-    } = await supabase.auth.getUser();
-
+    const authUser = await getAuthenticatedUser();
     if (!authUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Cast to any until User model is migrated
-    const db = prisma as any;
+    const quizzesRemaining = authUser.quizzesRemaining ?? 999;
+    const userPersona = authUser.persona ?? 'FRESHER';
+    const userProfileType = authUser.profileType ?? 'FRESHER';
+    const experienceYears = authUser.experienceYears ?? undefined;
+    const userQuizGoal = authUser.quizGoal ?? undefined;
 
-    const dbUser = await db.user?.findUnique?.({
-      where: { id: authUser.id },
-    });
-
-    // If User table doesn't exist yet, continue with defaults
-    const quizzesRemaining = dbUser?.quizzesRemaining ?? 999;
-    const userPersona = dbUser?.persona ?? 'FRESHER';
-    const userProfileType = dbUser?.profileType ?? 'FRESHER';
-    const experienceYears = dbUser?.experienceYears ?? undefined;
-    const userQuizGoal = dbUser?.quizGoal ?? undefined;
-
-    // Quota check
     if (quizzesRemaining <= 0) {
       return NextResponse.json(
         { error: 'Quiz quota exceeded. Upgrade your plan.' },
@@ -94,9 +74,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // ── Build prompt using the centralized prompt library ──
-    // Use the mixed prompt (MCQ + hands-on) when SQL or EXCEL are included,
-    // so the LLM generates setupSQL / columns / initialData for hands-on questions.
     const hasHandsOnSkills =
       Boolean(includeHandsOn) && skills.some((s: string) => ['SQL', 'EXCEL'].includes(s.toUpperCase()));
 
@@ -139,12 +116,10 @@ export async function POST(request: Request) {
         });
 
         if (cached.cacheHit) {
-          // Full cache hit — serve instantly, no LLM call
           questions = cached.questions.map((q) => q.questionData);
           generationSource = 'interview_cache';
           void incrementServedCount(cached.questions.map((q) => q.id));
         } else {
-          // Cache miss or partial — generate via research agent
           try {
             const generated = await researchAndGenerateQuestions({
               company: jdCompany,
@@ -169,7 +144,6 @@ export async function POST(request: Request) {
 
             generationSource = 'interview_research';
 
-            // Cache for future requests (non-blocking)
             void cacheInterviewQuestions({
               company: jdCompany,
               role,
@@ -177,7 +151,6 @@ export async function POST(request: Request) {
               jdText,
             });
           } catch {
-            // Research agent failed — fall through to normal generation
             if (cached.partialHit && cached.questions.length > 0) {
               questions = cached.questions.map((q) => q.questionData);
               generationSource = 'interview_cache';
@@ -185,7 +158,7 @@ export async function POST(request: Request) {
           }
         }
       } catch {
-        // Cache lookup failed — fall through to normal generation
+        // Cache lookup failed — fall through
       }
     }
 
@@ -194,7 +167,6 @@ export async function POST(request: Request) {
     if (!questions || !Array.isArray(questions) || questions.length === 0) {
       try {
         const raw = await groqQuizCompletion(prompt);
-        // Strip markdown fences if the LLM wrapped output
         const cleaned = raw
           .replace(/```json\s*/g, '')
           .replace(/```\s*/g, '')
@@ -205,24 +177,19 @@ export async function POST(request: Request) {
           throw new Error('Invalid AI response');
         }
 
-        // Post-process: ensure SQL_HANDS_ON has setupSQL, EXCEL has grid data
         questions = postProcessQuestions(questions);
 
-        // If this was an interview prep generation, cache for future
         if (userQuizGoal === 'INTERVIEW_PREP' && jdCompany) {
           const role = extractRole(jdText);
           void cacheInterviewQuestions({ company: jdCompany, role, questions, jdText });
         }
       } catch {
-        // Fallback 1: try the question bank in Prisma (uses actual DB schema)
+        // Fallback 1: question bank in Firestore
         try {
-          const bankQuestions = await (prisma as any).question?.findMany?.({
-            take: questionCount,
-            where: {
-              skill: { in: skills.map((s: string) => String(s).toUpperCase()) },
-            },
-            orderBy: { createdAt: 'desc' },
-          }) ?? [];
+          const bankQuestions = await getQuestionsByFilter({
+            skill: normalizedSkills[0],
+            limit: questionCount,
+          });
 
           if (bankQuestions.length > 0) {
             usedFallback = true;
@@ -235,14 +202,13 @@ export async function POST(request: Request) {
               correctAnswer: q.correctAnswer,
               solution: q.solution ?? '',
               difficulty: typeof q.difficulty === 'number' ? q.difficulty : 5,
-              // Spread metadata onto the root object so SQLEditor gets setupSQL, expectedOutput, etc.
               ...(typeof q.metadata === 'object' && q.metadata !== null ? q.metadata : {}),
             }));
           } else {
             throw new Error('empty');
           }
         } catch {
-          // Fallback 2: use the in-memory seed question bank
+          // Fallback 2: seed questions
           const seedQs = getRandomSeedQuestions(skills, questionCount, hasHandsOnSkills);
           if (seedQs.length === 0) {
             return NextResponse.json(
@@ -257,35 +223,22 @@ export async function POST(request: Request) {
       }
     }
 
-    // Final safety net: post-process all questions regardless of source
     questions = postProcessQuestions(questions);
 
-    // Persist quiz (requires Quiz table — uses `as any` until migration)
-    let quizId: string;
-    try {
-      const quiz = await db.quiz.create({
-        data: {
-          persona: persona,
-          jdCompany: jdCompany ?? null,
-          jdText: jdText ?? null,
-          timerMins: Math.max(5, questionCount * 2),
-          questions: questions,
-        },
-      });
-      quizId = quiz.id;
+    // Persist quiz to Firestore
+    const quizId = await createQuiz({
+      persona: persona,
+      jdCompany: jdCompany ?? null,
+      jdText: jdText ?? null,
+      timerMins: Math.max(5, questionCount * 2),
+      questions: questions,
+      quizGoal: userQuizGoal ?? 'PRACTICE',
+    });
 
-      // Decrement remaining quizzes
-      if (dbUser) {
-        await db.user.update({
-          where: { id: dbUser.id },
-          data: { quizzesRemaining: { decrement: 1 } },
-        });
-      }
-    } catch {
-      // Quiz table doesn't exist yet — return questions directly
-      // Client will need to handle this gracefully
-      quizId = crypto.randomUUID();
-    }
+    // Decrement quiz quota
+    await updateUser(authUser.id, {
+      quizzesRemaining: Math.max(0, quizzesRemaining - 1),
+    });
 
     await recordQuizGenerationTrace({
       userId: authUser.id,

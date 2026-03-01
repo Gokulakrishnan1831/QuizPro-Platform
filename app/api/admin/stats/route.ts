@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import prisma from '@/lib/prisma';
+import { getUserCount, getQuestionCount, getQuizAttemptCount, getAllUsers, getQuizAttemptsByUser } from '@/lib/firebase/db';
+import { db } from '@/lib/firebase/admin';
+import { COLLECTIONS } from '@/lib/firebase/collections';
 
 const JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'quizpro-admin-secret-key-change-in-production';
 
@@ -15,59 +17,63 @@ export async function GET(request: Request) {
   try { jwt.verify(token, JWT_SECRET); } catch { return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }); }
 
   try {
-    const db = prisma as any;
-
     const [userCount, questionCount, attemptCount] = await Promise.all([
-      db.user.count().catch(() => 0),
-      db.question.count().catch(() => 0),
-      db.quizAttempt.count().catch(() => 0),
+      getUserCount(),
+      getQuestionCount(),
+      getQuizAttemptCount(),
     ]);
 
     // Revenue proxy — count paid users × avg plan price
-    const tierCounts = await db.user
-      .groupBy({ by: ['subscriptionTier'], _count: { id: true } })
-      .catch(() => []);
+    const allUsers = await getAllUsers();
+    const tierCounts: Record<string, number> = {};
+    for (const u of allUsers) {
+      const tier = u.subscriptionTier || 'FREE';
+      tierCounts[tier] = (tierCounts[tier] || 0) + 1;
+    }
 
     const TIER_PRICE: Record<string, number> = {
       BASIC: 99,
       PRO: 299,
       ELITE: 499,
     };
-    const estimatedRevenue = tierCounts.reduce(
-      (sum: number, t: any) =>
-        sum + (TIER_PRICE[t.subscriptionTier] ?? 0) * (t._count?.id ?? 0),
+    const estimatedRevenue = Object.entries(tierCounts).reduce(
+      (sum, [tier, count]) => sum + (TIER_PRICE[tier] ?? 0) * count,
       0
     );
 
-    const recentUsers = await db.user
-      .findMany({
-        take: 10,
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          persona: true,
-          subscriptionTier: true,
-          quizzesRemaining: true,
-          createdAt: true,
-        },
+    // Recent users (newest 10)
+    const recentUsers = allUsers
+      .sort((a, b) => {
+        const aTime = a.createdAt?.toMillis?.() ?? 0;
+        const bTime = b.createdAt?.toMillis?.() ?? 0;
+        return bTime - aTime;
       })
-      .catch(() => []);
+      .slice(0, 10)
+      .map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        persona: u.persona,
+        subscriptionTier: u.subscriptionTier,
+        quizzesRemaining: u.quizzesRemaining,
+        createdAt: u.createdAt,
+      }));
 
-    const recentAttempts = await db.quizAttempt
-      .findMany({
-        take: 10,
-        orderBy: { completedAt: 'desc' },
-        select: {
-          id: true,
-          score: true,
-          timeTaken: true,
-          completedAt: true,
-          userId: true,
-        },
-      })
-      .catch(() => []);
+    // Recent attempts (newest 10)
+    const attemptsSnap = await db.collection(COLLECTIONS.QUIZ_ATTEMPTS)
+      .orderBy('completedAt', 'desc')
+      .limit(10)
+      .get();
+    const recentAttempts = attemptsSnap.docs.map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        score: data.score,
+        timeTaken: data.timeTaken,
+        completedAt: data.completedAt,
+        userId: data.userId,
+      };
+    });
 
     return NextResponse.json({
       stats: {
@@ -78,7 +84,10 @@ export async function GET(request: Request) {
       },
       recentUsers,
       recentAttempts,
-      tierBreakdown: tierCounts,
+      tierBreakdown: Object.entries(tierCounts).map(([tier, count]) => ({
+        subscriptionTier: tier,
+        _count: { id: count },
+      })),
     });
   } catch (error: any) {
     console.error('Admin stats error:', error);

@@ -1,19 +1,13 @@
 import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import prisma from '@/lib/prisma';
+import { db } from '@/lib/firebase/admin';
+import { COLLECTIONS } from '@/lib/firebase/collections';
+import { getUserCount, getQuestionCount, getQuizAttemptCount, getAllUsers } from '@/lib/firebase/db';
 
 const JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'quizpro-admin-secret-key-change-in-production';
 
 /**
  * GET /api/admin/analytics
- *
- * Returns:
- *  - daily attempt counts (last 30 days)
- *  - score distribution (buckets: 0-20, 20-40, … 80-100)
- *  - tier breakdown counts
- *  - persona breakdown counts
- *  - skill accuracy averages
- *  - top recent attempts (for activity feed)
  */
 export async function GET(request: Request) {
     const cookieHeader = request.headers.get('cookie') || '';
@@ -22,61 +16,34 @@ export async function GET(request: Request) {
     try { jwt.verify(token, JWT_SECRET); } catch { return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }); }
 
     try {
-        const db = prisma as any;
-
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-        /* ── parallel queries ─────────────────────────────────────── */
-        const [
-            recentAttempts,
-            tierCounts,
-            personaCounts,
-            progressRows,
-            totalUsers,
-            totalAttempts,
-            totalQuestions,
-        ] = await Promise.all([
-            // last 200 attempts for bucketing + daily counts
-            db.quizAttempt
-                .findMany({
-                    where: { completedAt: { gte: thirtyDaysAgo } },
-                    orderBy: { completedAt: 'desc' },
-                    take: 200,
-                    select: {
-                        score: true,
-                        completedAt: true,
-                        timeTaken: true,
-                    },
-                })
-                .catch(() => []),
-
-            // tier distribution
-            db.user
-                .groupBy({ by: ['subscriptionTier'], _count: { id: true } })
-                .catch(() => []),
-
-            // persona distribution
-            db.user
-                .groupBy({ by: ['persona'], _count: { id: true } })
-                .catch(() => []),
-
-            // average accuracy per skill from UserProgress
-            db.userProgress
-                .groupBy({
-                    by: ['skill'],
-                    _avg: { accuracy: true },
-                    _sum: { totalAttempted: true, totalCorrect: true },
-                })
-                .catch(() => []),
-
-            db.user.count().catch(() => 0),
-            db.quizAttempt.count().catch(() => 0),
-            db.question.count().catch(() => 0),
+        const [totalUsers, totalQuestions, totalAttempts, allUsers] = await Promise.all([
+            getUserCount(),
+            getQuestionCount(),
+            getQuizAttemptCount(),
+            getAllUsers(),
         ]);
 
-        /* ── Score distribution (8 buckets) ─────────────────────── */
-        const buckets = Array(10).fill(0); // 0-10, 10-20, … 90-100
+        // Recent attempts (last 30 days)
+        const attemptsSnap = await db.collection(COLLECTIONS.QUIZ_ATTEMPTS)
+            .orderBy('completedAt', 'desc')
+            .limit(200)
+            .get();
+        const recentAttempts = attemptsSnap.docs
+            .map((d) => d.data())
+            .filter((a) => {
+                const completed = a.completedAt?.toDate?.() ?? new Date(0);
+                return completed >= thirtyDaysAgo;
+            });
+
+        // User progress
+        const progressSnap = await db.collection(COLLECTIONS.USER_PROGRESS).get();
+        const progressRows = progressSnap.docs.map((d) => d.data());
+
+        // Score distribution
+        const buckets = Array(10).fill(0);
         for (const a of recentAttempts) {
             const idx = Math.min(9, Math.floor(parseFloat(String(a.score)) / 10));
             buckets[idx]++;
@@ -86,37 +53,44 @@ export async function GET(request: Request) {
             count,
         }));
 
-        /* ── Daily attempt counts ───────────────────────────────── */
+        // Daily attempt counts
         const dailyMap: Record<string, number> = {};
         for (const a of recentAttempts) {
-            const day = new Date(a.completedAt).toISOString().slice(0, 10);
+            const day = (a.completedAt?.toDate?.() ?? new Date()).toISOString().slice(0, 10);
             dailyMap[day] = (dailyMap[day] ?? 0) + 1;
         }
         const dailyAttempts = Object.entries(dailyMap)
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([date, count]) => ({ date, count }));
 
-        /* ── Average time spent ─────────────────────────────────── */
-        const avgTime =
-            recentAttempts.length > 0
-                ? Math.round(
-                    recentAttempts.reduce(
-                        (s: number, a: any) => s + (a.timeTaken ?? 0),
-                        0
-                    ) / recentAttempts.length
-                )
-                : 0;
+        // Avg time + avg score
+        const avgTime = recentAttempts.length > 0
+            ? Math.round(recentAttempts.reduce((s, a) => s + (a.timeTaken ?? 0), 0) / recentAttempts.length)
+            : 0;
+        const avgScore = recentAttempts.length > 0
+            ? Math.round(recentAttempts.reduce((s, a) => s + parseFloat(String(a.score ?? 0)), 0) / recentAttempts.length)
+            : 0;
 
-        /* ── Avg score ─────────────────────────────────────────── */
-        const avgScore =
-            recentAttempts.length > 0
-                ? Math.round(
-                    recentAttempts.reduce(
-                        (s: number, a: any) => s + parseFloat(String(a.score ?? 0)),
-                        0
-                    ) / recentAttempts.length
-                )
-                : 0;
+        // Tier + persona breakdown
+        const tierCounts: Record<string, number> = {};
+        const personaCounts: Record<string, number> = {};
+        for (const u of allUsers) {
+            const tier = u.subscriptionTier || 'FREE';
+            const persona = u.persona || 'UNKNOWN';
+            tierCounts[tier] = (tierCounts[tier] || 0) + 1;
+            personaCounts[persona] = (personaCounts[persona] || 0) + 1;
+        }
+
+        // Skill accuracy
+        const skillMap: Record<string, { totalAttempted: number; totalCorrect: number; accuracySum: number; count: number }> = {};
+        for (const p of progressRows) {
+            const skill = p.skill;
+            if (!skillMap[skill]) skillMap[skill] = { totalAttempted: 0, totalCorrect: 0, accuracySum: 0, count: 0 };
+            skillMap[skill].totalAttempted += p.totalAttempted ?? 0;
+            skillMap[skill].totalCorrect += p.totalCorrect ?? 0;
+            skillMap[skill].accuracySum += p.accuracy ?? 0;
+            skillMap[skill].count++;
+        }
 
         return NextResponse.json({
             kpis: {
@@ -129,19 +103,13 @@ export async function GET(request: Request) {
             },
             dailyAttempts,
             scoreDistribution,
-            tierBreakdown: tierCounts.map((t: any) => ({
-                tier: t.subscriptionTier ?? 'UNKNOWN',
-                count: t._count?.id ?? 0,
-            })),
-            personaBreakdown: personaCounts.map((p: any) => ({
-                persona: p.persona ?? 'UNKNOWN',
-                count: p._count?.id ?? 0,
-            })),
-            skillAccuracy: progressRows.map((r: any) => ({
-                skill: r.skill,
-                avgAccuracy: Math.round(parseFloat(String(r._avg?.accuracy ?? 0))),
-                totalAttempted: r._sum?.totalAttempted ?? 0,
-                totalCorrect: r._sum?.totalCorrect ?? 0,
+            tierBreakdown: Object.entries(tierCounts).map(([tier, count]) => ({ tier, count })),
+            personaBreakdown: Object.entries(personaCounts).map(([persona, count]) => ({ persona, count })),
+            skillAccuracy: Object.entries(skillMap).map(([skill, data]) => ({
+                skill,
+                avgAccuracy: data.count > 0 ? Math.round(data.accuracySum / data.count) : 0,
+                totalAttempted: data.totalAttempted,
+                totalCorrect: data.totalCorrect,
             })),
         });
     } catch (err: any) {

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { getQuizById } from '@/lib/firebase/db';
 import { postProcessQuestions } from '@/lib/ai/post-process';
 
 /**
@@ -21,8 +21,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const db = prisma as any;
-    const quiz = await db.quiz?.findUnique?.({ where: { id: quizId } }).catch(() => null);
+    const quiz = await getQuizById(quizId);
 
     if (!quiz) {
       return NextResponse.json({ error: 'Quiz not found' }, { status: 404 });
@@ -49,8 +48,6 @@ export async function POST(request: Request) {
         : [];
       isCorrect = accepted.includes(actual);
     } else if (qType === 'SQL_HANDS_ON' || qType === 'EXCEL_HANDS_ON') {
-      // SQL/Excel grading requires DuckDB — defer to client-side comparison
-      // Return null to indicate grading was not performed here
       return NextResponse.json({
         isCorrect: null,
         correctAnswer: question.solution ?? '',

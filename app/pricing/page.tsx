@@ -20,7 +20,8 @@ import {
   Clock,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { auth } from '@/lib/firebase/client';
+import { onAuthStateChanged } from 'firebase/auth';
 import { track } from '@/lib/analytics';
 
 /* ─── Plan definitions ───────────────────────────────────────── */
@@ -495,8 +496,7 @@ export default function PricingPage() {
   const [successTier, setSuccessTier] = useState<string | null>(null);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(async ({ data: { user: currentUser } }) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
         const res = await fetch('/api/user/profile');
@@ -504,19 +504,18 @@ export default function PricingPage() {
         const apiTier = data.subscriptionTier ?? 'FREE';
         setCurrentTier(apiTier);
 
-        // Auto-open modal if ?plan=X is in URL
         const params = new URLSearchParams(window.location.search);
         const paramPlan = params.get('plan')?.toUpperCase();
         if (paramPlan && paramPlan !== apiTier) {
           const matched = TIERS.find(t => t.id === paramPlan);
           if (matched && matched.price > 0) {
             setSelectedTier(matched);
-            // clean up URL to prevent auto-opening again on refresh
             window.history.replaceState({}, '', '/pricing');
           }
         }
       }
     });
+    return () => unsubscribe();
   }, []);
 
   const handleUpgrade = (tier: (typeof TIERS)[number]) => {

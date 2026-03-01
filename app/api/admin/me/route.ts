@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import prisma from '@/lib/prisma';
+import { getAdminById } from '@/lib/firebase/db';
 
 const JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'quizpro-admin-secret-key-change-in-production';
 
@@ -16,27 +16,15 @@ export async function GET(request: Request) {
 
         const decoded = jwt.verify(token, JWT_SECRET) as { adminId: string; email: string };
 
-        const db = prisma as any;
-        let admin: any;
-
-        try {
-            admin = await db.admin.findUnique({
-                where: { id: decoded.adminId },
-                select: { id: true, email: true, name: true },
-            });
-        } catch {
-            const result = await db.$queryRawUnsafe(
-                'SELECT id, email, name FROM "Admin" WHERE id = $1::uuid LIMIT 1',
-                decoded.adminId
-            );
-            admin = result[0] || null;
-        }
+        const admin = await getAdminById(decoded.adminId);
 
         if (!admin) {
             return NextResponse.json({ admin: null }, { status: 401 });
         }
 
-        return NextResponse.json({ admin });
+        return NextResponse.json({
+            admin: { id: admin.id, email: admin.email, name: admin.name },
+        });
     } catch {
         return NextResponse.json({ admin: null }, { status: 401 });
     }

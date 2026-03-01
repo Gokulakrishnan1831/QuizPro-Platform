@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { getQuizById } from '@/lib/firebase/db';
 import { postProcessQuestions } from '@/lib/ai/post-process';
 
 /**
  * GET /api/quiz/[sessionId]
  *
- * Fetch a quiz by ID. Returns the quiz questions for the playback UI.
- * The `sessionId` param is actually the quiz ID in the new schema.
+ * Fetch a quiz by ID from Firestore. Returns questions for the playback UI.
  */
 export async function GET(
   _request: Request,
@@ -14,11 +13,7 @@ export async function GET(
 ) {
   try {
     const { sessionId } = await params;
-    const db = prisma as any;
-
-    const quiz = await db.quiz?.findUnique?.({
-      where: { id: sessionId },
-    }).catch(() => null);
+    const quiz = await getQuizById(sessionId);
 
     if (!quiz) {
       return NextResponse.json({ error: 'Quiz not found' }, { status: 404 });
@@ -47,7 +42,6 @@ export async function GET(
             expectedOutput: q.expectedOutput,
             expectedColumns: q.expectedColumns,
             starterCode: q.starterCode,
-            // correctAnswer and solution are NOT sent — graded server-side
           };
         }
 
@@ -66,7 +60,6 @@ export async function GET(
             engineMode: q.engineMode,
             allowEquivalentFormula: q.allowEquivalentFormula,
             valueTolerance: q.valueTolerance,
-            // correctAnswer and solution are NOT sent — graded server-side
           };
         }
 
@@ -79,7 +72,6 @@ export async function GET(
             blankLabel: q.blankLabel,
             caseSensitive: q.caseSensitive ?? false,
             difficulty: q.difficulty,
-            // acceptedAnswers and solution are hidden for server-side grading
           };
         }
 
@@ -90,7 +82,6 @@ export async function GET(
           content: q.content,
           options: q.options,
           difficulty: q.difficulty,
-          // correctAnswer and solution are NOT sent — graded server-side
         };
       }),
     });

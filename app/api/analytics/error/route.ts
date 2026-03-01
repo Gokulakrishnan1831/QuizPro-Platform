@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import { ensureTables } from '@/lib/db-init';
-import prisma from '@/lib/prisma';
-import { createClient } from '@/lib/supabase/server';
+import { getAuthenticatedUser } from '@/lib/auth';
+import { createAppError } from '@/lib/firebase/db';
 
 export async function POST(request: Request) {
     try {
@@ -10,23 +9,17 @@ export async function POST(request: Request) {
 
         let userId: string | null = null;
         try {
-            const supabase = await createClient();
-            const { data: { user } } = await supabase.auth.getUser();
+            const user = await getAuthenticatedUser();
             userId = user?.id ?? null;
         } catch { }
 
-        await ensureTables();
-        const db = prisma as any;
-
-        await db.$executeRawUnsafe(
-            `INSERT INTO "AppError" (user_id, error_message, error_stack, component, path)
-       VALUES ($1, $2, $3, $4, $5)`,
+        await createAppError({
             userId,
-            String(message).slice(0, 2000),
-            stack ? String(stack).slice(0, 5000) : null,
-            component ?? null,
-            path ?? null,
-        );
+            errorMessage: String(message).slice(0, 2000),
+            errorStack: stack ? String(stack).slice(0, 5000) : null,
+            component: component ?? null,
+            path: path ?? null,
+        });
 
         return NextResponse.json({ ok: true });
     } catch {

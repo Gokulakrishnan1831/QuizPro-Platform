@@ -1,44 +1,31 @@
 'use client';
 
-import { createClient } from '@/lib/supabase/client';
+import { auth } from '@/lib/firebase/client';
+import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Zap, LogOut, User as UserIcon, Menu, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import type { User } from '@supabase/supabase-js';
 
 export default function Navbar() {
   const router = useRouter();
-  const supabase = createClient();
 
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data, error }) => {
-      if (error) {
-        setUser(null);
-      } else {
-        setUser(data.user);
-      }
-      setLoading(false);
-    }).catch(() => {
-      setUser(null);
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setUser(firebaseUser);
       setLoading(false);
     });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
+    return () => unsubscribe();
   }, []);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await signOut(auth);
+    // Clear server-side session cookie
+    await fetch('/api/auth/session', { method: 'DELETE' });
     setUser(null);
     router.push('/');
     router.refresh();
@@ -99,7 +86,7 @@ export default function Navbar() {
           </Link>
 
           {loading ? (
-            <div style={{ width: '130px', height: '40px' }} /> // Spacer to prevent layout shift
+            <div style={{ width: '130px', height: '40px' }} />
           ) : user ? (
             <>
               <Link

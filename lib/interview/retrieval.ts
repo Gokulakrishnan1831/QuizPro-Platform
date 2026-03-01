@@ -1,5 +1,7 @@
-import prisma from '@/lib/prisma';
-import { ensureTables } from '@/lib/db-init';
+import { db } from '@/lib/firebase/admin';
+import { COLLECTIONS } from '@/lib/firebase/collections';
+import { createQuizGenerationTrace } from '@/lib/firebase/db';
+import { getInterviewPatterns } from '@/lib/firebase/db';
 
 const STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'in', 'into',
@@ -159,24 +161,24 @@ export function rankInterviewPatterns(
   return ranked.slice(0, maxItems);
 }
 
-function mapRowToPattern(row: any): InterviewPattern {
+function mapFirestoreToPattern(doc: any): InterviewPattern {
   return {
-    id: String(row.id),
-    company: String(row.company),
-    normalizedCompany: String(row.normalized_company),
-    role: String(row.role ?? 'Data Analyst'),
-    skill: row.skill ? String(row.skill) : null,
-    patternType: String(row.pattern_type ?? 'QUESTION'),
-    questionText: String(row.question_text ?? ''),
-    difficulty: row.difficulty === null || row.difficulty === undefined ? null : Number(row.difficulty),
-    tags: parseStringArray(row.tags),
-    source: String(row.source ?? ''),
-    sourceUrl: row.source_url ? String(row.source_url) : null,
-    evidenceNote: row.evidence_note ? String(row.evidence_note) : null,
-    isVerified: Boolean(row.is_verified),
-    isActive: row.is_active !== false,
-    lastSeenAt: row.last_seen_at ? String(row.last_seen_at) : null,
-    createdAt: row.created_at ? String(row.created_at) : null,
+    id: doc.id ?? String(doc.id),
+    company: String(doc.company),
+    normalizedCompany: String(doc.normalizedCompany),
+    role: String(doc.role ?? 'Data Analyst'),
+    skill: doc.skill ? String(doc.skill) : null,
+    patternType: String(doc.patternType ?? 'QUESTION'),
+    questionText: String(doc.questionText ?? ''),
+    difficulty: doc.difficulty === null || doc.difficulty === undefined ? null : Number(doc.difficulty),
+    tags: parseStringArray(doc.tags),
+    source: String(doc.source ?? ''),
+    sourceUrl: doc.sourceUrl ? String(doc.sourceUrl) : null,
+    evidenceNote: doc.evidenceNote ? String(doc.evidenceNote) : null,
+    isVerified: Boolean(doc.isVerified),
+    isActive: doc.isActive !== false,
+    lastSeenAt: doc.lastSeenAt?.toDate?.()?.toISOString?.() ?? null,
+    createdAt: doc.createdAt?.toDate?.()?.toISOString?.() ?? null,
   };
 }
 
@@ -190,21 +192,13 @@ export async function fetchCompanyInterviewPatterns(params: {
   const normalizedCompany = normalizeCompanyName(company);
   if (!normalizedCompany) return [];
 
-  await ensureTables();
-  const db = prisma as any;
-  const rows = await db.$queryRawUnsafe(
-    `SELECT id, company, normalized_company, role, skill, pattern_type, question_text,
-            difficulty, tags, source, source_url, evidence_note, is_verified, is_active,
-            last_seen_at, created_at
-       FROM "CompanyInterviewPattern"
-      WHERE is_active = TRUE
-        AND normalized_company = $1
-      ORDER BY is_verified DESC, last_seen_at DESC, created_at DESC
-      LIMIT 200`,
-    normalizedCompany
-  );
+  const docs = await getInterviewPatterns({
+    normalizedCompany,
+    isActive: true,
+    limit: 200,
+  });
 
-  const patterns = Array.isArray(rows) ? rows.map(mapRowToPattern) : [];
+  const patterns = docs.map(mapFirestoreToPattern);
   return rankInterviewPatterns(patterns, { skills, jdText, maxItems });
 }
 
@@ -237,25 +231,19 @@ export async function recordQuizGenerationTrace(params: {
   patterns: RankedInterviewPattern[];
   trace?: Record<string, unknown>;
 }): Promise<void> {
-  await ensureTables();
-  const db = prisma as any;
   try {
-    await db.$executeRawUnsafe(
-      `INSERT INTO "QuizGenerationTrace"
-        (user_id, quiz_id, quiz_goal, company, skills, model, used_pattern_count, used_pattern_ids, used_fallback, trace)
-       VALUES
-        ($1, $2, $3, $4, $5::jsonb, $6, $7, $8::jsonb, $9, $10::jsonb)`,
-      params.userId,
-      params.quizId ?? null,
-      params.quizGoal,
-      params.company ?? null,
-      JSON.stringify(params.skills),
-      params.model ?? null,
-      params.patterns.length,
-      JSON.stringify(params.patterns.map((p) => p.id)),
-      params.usedFallback,
-      JSON.stringify(params.trace ?? {})
-    );
+    await createQuizGenerationTrace({
+      userId: params.userId,
+      quizId: params.quizId ?? null,
+      quizGoal: params.quizGoal,
+      company: params.company ?? null,
+      skills: params.skills,
+      model: params.model ?? null,
+      usedPatternCount: params.patterns.length,
+      usedPatternIds: params.patterns.map((p) => p.id),
+      usedFallback: params.usedFallback,
+      trace: params.trace ?? {},
+    });
   } catch {
     // Non-blocking by design.
   }

@@ -1,13 +1,21 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { updateSession } from '@/lib/supabase/middleware';
+
+/**
+ * Middleware — runs on the Edge Runtime.
+ *
+ * We CANNOT import firebase-admin here because it uses Node.js APIs
+ * (node:fs, node:https, etc.) that are unavailable on the Edge.
+ *
+ * Strategy:
+ * - Check for the existence of the __session cookie (lightweight).
+ * - If absent on a protected route, redirect to /login.
+ * - Full session verification happens server-side inside API routes
+ *   and server components via `getAuthenticatedUser()`.
+ */
 
 const PUBLIC_ROUTES = ['/', '/login', '/get-started', '/pricing', '/auth/callback'];
 
 export async function middleware(request: NextRequest) {
-    // 1. Always refresh the Supabase session cookie
-    const response = await updateSession(request);
-
-    // 2. For protected routes, check auth
     const path = request.nextUrl.pathname;
     const isPublic =
         PUBLIC_ROUTES.some((r) => path === r) ||
@@ -18,36 +26,22 @@ export async function middleware(request: NextRequest) {
         path.startsWith('/favicon');
 
     if (!isPublic) {
-        // Read the Supabase session that updateSession just refreshed
-        const { createServerClient } = await import('@supabase/ssr');
-        const supabase = createServerClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-            {
-                cookies: {
-                    getAll() {
-                        return request.cookies.getAll();
-                    },
-                    setAll() {
-                        // no-op – already handled by updateSession
-                    },
-                },
-            },
-        );
+        const sessionCookie = request.cookies.get('__session')?.value;
 
-        const {
-            data: { user },
-        } = await supabase.auth.getUser();
-
-        if (!user) {
+        if (!sessionCookie) {
             const url = request.nextUrl.clone();
             url.pathname = '/login';
             url.searchParams.set('redirect', path);
             return NextResponse.redirect(url);
         }
+
+        // Cookie exists — allow through. Actual verification happens in
+        // getAuthenticatedUser() on the server side. If the cookie is
+        // invalid/expired, the API will return 401 and the client will
+        // redirect to login.
     }
 
-    return response;
+    return NextResponse.next();
 }
 
 export const config = {

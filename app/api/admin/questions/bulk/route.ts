@@ -1,27 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import prisma from '@/lib/prisma';
+import { createQuestion } from '@/lib/firebase/db';
 
 const JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'quizpro-admin-secret-key-change-in-production';
 
 /**
  * POST /api/admin/questions/bulk
  *
- * Bulk-import questions into the Question bank.
- * Expects a JSON array of question objects matching the new schema.
- *
- * Example payload:
- * [
- *   {
- *     "skill": "SQL",
- *     "type": "MCQ",
- *     "content": "What does SELECT DISTINCT do?",
- *     "options": ["Removes duplicates", "Sorts rows", "Filters NULLs", "Groups rows"],
- *     "correctAnswer": "Removes duplicates",
- *     "solution": "SELECT DISTINCT removes duplicate rows from the result set.",
- *     "difficulty": 3
- *   }
- * ]
+ * Bulk-import questions into the Firestore question bank.
  */
 export async function POST(req: NextRequest) {
   const cookieHeader = req.headers.get('cookie') || '';
@@ -62,17 +48,15 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        await prisma.question.create({
-          data: {
-            skill,
-            type,
-            content,
-            options: options ?? null,
-            correctAnswer,
-            solution,
-            difficulty: difficulty ?? 5,
-            metadata: metadata ?? null,
-          },
+        await createQuestion({
+          skill,
+          type,
+          content,
+          options: options ?? null,
+          correctAnswer,
+          solution,
+          difficulty: difficulty ?? 5,
+          metadata: metadata ?? null,
         });
 
         successCount++;

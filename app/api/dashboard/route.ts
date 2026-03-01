@@ -1,46 +1,43 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import prisma from '@/lib/prisma';
+import { getAuthenticatedUser } from '@/lib/auth';
+import { getAllUserProgress, getQuizAttemptsByUser, getQuizById } from '@/lib/firebase/db';
 
 /**
  * GET /api/dashboard
  *
  * Returns the authenticated user's profile and aggregated stats.
- * Requires a valid Supabase session.
  */
 export async function GET() {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user: authUser },
-    } = await supabase.auth.getUser();
+    const user = await getAuthenticatedUser();
 
-    if (!authUser) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Fetch user profile + progress + recent attempts
-    const user = await prisma.user.findUnique({
-      where: { id: authUser.id },
-      include: {
-        progress: true,
-        quizAttempts: {
-          orderBy: { completedAt: 'desc' },
-          take: 5,
-          include: { quiz: { select: { persona: true, timerMins: true } } },
-        },
-      },
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: 'User not found in database' }, { status: 404 });
-    }
+    // Fetch progress + recent attempts from Firestore
+    const progress = await getAllUserProgress(user.id);
+    const recentAttempts = await getQuizAttemptsByUser(user.id, 5);
 
     // Aggregate stats
-    const totalAttempted = user.progress.reduce((sum, p) => sum + p.totalAttempted, 0);
-    const totalCorrect = user.progress.reduce((sum, p) => sum + p.totalCorrect, 0);
+    const totalAttempted = progress.reduce((sum, p) => sum + p.totalAttempted, 0);
+    const totalCorrect = progress.reduce((sum, p) => sum + p.totalCorrect, 0);
     const overallAccuracy =
       totalAttempted > 0 ? Math.round((totalCorrect / totalAttempted) * 100) : 0;
+
+    // Fetch quiz details for recent attempts
+    const enrichedAttempts = await Promise.all(
+      recentAttempts.map(async (a) => {
+        const quiz = await getQuizById(a.quizId);
+        return {
+          id: a.id,
+          score: Number(a.score),
+          timeTaken: a.timeTaken,
+          persona: quiz?.persona ?? 'FRESHER',
+          completedAt: a.completedAt,
+        };
+      }),
+    );
 
     return NextResponse.json({
       profile: {
@@ -55,22 +52,16 @@ export async function GET() {
         totalAttempted,
         totalCorrect,
         accuracy: overallAccuracy,
-        quizzesTaken: user.quizAttempts.length,
+        quizzesTaken: recentAttempts.length,
       },
-      skillProgress: user.progress.map((p) => ({
+      skillProgress: progress.map((p) => ({
         skill: p.skill,
         totalAttempted: p.totalAttempted,
         totalCorrect: p.totalCorrect,
         accuracy: Number(p.accuracy),
         lastPracticed: p.lastPracticed,
       })),
-      recentAttempts: user.quizAttempts.map((a) => ({
-        id: a.id,
-        score: Number(a.score),
-        timeTaken: a.timeTaken,
-        persona: a.quiz.persona,
-        completedAt: a.completedAt,
-      })),
+      recentAttempts: enrichedAttempts,
     });
   } catch (error: any) {
     console.error('Dashboard API error:', error);

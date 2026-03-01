@@ -17,17 +17,25 @@ import {
 
 interface PaymentRequest {
     id: string;
-    user_id: string;
-    user_email: string;
-    user_name: string | null;
+    userId: string;
+    userEmail: string;
+    userName: string | null;
     tier: string;
     amount: number;
-    upi_transaction_id: string;
-    screenshot_base64: string | null;
+    upiTransactionId: string;
+    screenshotBase64: string | null;
     status: 'pending' | 'approved' | 'rejected';
-    admin_notes: string | null;
-    created_at: string;
-    reviewed_at: string | null;
+    adminNotes: string | null;
+    createdAt: any;
+    reviewedAt: any | null;
+}
+
+function parseFirestoreDate(d: any): Date | null {
+    if (!d) return null;
+    if (d._seconds) return new Date(d._seconds * 1000);
+    if (d.seconds) return new Date(d.seconds * 1000);
+    const parsed = new Date(d);
+    return isNaN(parsed.getTime()) ? null : parsed;
 }
 
 /* ─── Status badge ───────────────────────────────────────────── */
@@ -97,12 +105,12 @@ function DetailModal({
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', marginBottom: '1.5rem' }}>
                     {[
-                        ['User', req.user_name || req.user_email],
-                        ['Email', req.user_email],
+                        ['User', req.userName || req.userEmail],
+                        ['Email', req.userEmail],
                         ['Tier', req.tier],
                         ['Amount', `₹${req.amount}`],
-                        ['UPI Transaction ID', req.upi_transaction_id],
-                        ['Submitted', new Date(req.created_at).toLocaleString('en-IN')],
+                        ['UPI Transaction ID', req.upiTransactionId],
+                        ['Submitted', parseFirestoreDate(req.createdAt)?.toLocaleString('en-IN') ?? '—'],
                         ['Status', req.status.toUpperCase()],
                     ].map(([label, value]) => (
                         <div
@@ -125,13 +133,13 @@ function DetailModal({
                 </div>
 
                 {/* Screenshot */}
-                {req.screenshot_base64 && (
+                {req.screenshotBase64 && (
                     <div style={{ marginBottom: '1.5rem' }}>
                         <p style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: '8px' }}>
                             Payment Screenshot:
                         </p>
                         <img
-                            src={req.screenshot_base64}
+                            src={req.screenshotBase64}
                             alt="Payment screenshot"
                             style={{
                                 width: '100%',
@@ -242,7 +250,7 @@ function DetailModal({
                         }}
                     >
                         {req.status === 'approved' ? '✓ Approved' : '✗ Rejected'}
-                        {req.admin_notes && ` — ${req.admin_notes}`}
+                        {req.adminNotes && ` — ${req.adminNotes}`}
                     </div>
                 )}
             </motion.div>
@@ -473,9 +481,9 @@ export default function AdminPaymentsPage() {
                             >
                                 <div>
                                     <div style={{ fontWeight: '600', color: 'white' }}>
-                                        {r.user_name || '—'}
+                                        {r.userName || '—'}
                                     </div>
-                                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{r.user_email}</div>
+                                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{r.userEmail}</div>
                                 </div>
 
                                 <div>
@@ -514,12 +522,15 @@ export default function AdminPaymentsPage() {
                                 </div>
 
                                 <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>
-                                    {new Date(r.created_at).toLocaleDateString('en-IN', {
-                                        day: '2-digit',
-                                        month: 'short',
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                    })}
+                                    {(() => {
+                                        const date = parseFirestoreDate(r.createdAt);
+                                        return date ? date.toLocaleDateString('en-IN', {
+                                            day: '2-digit',
+                                            month: 'short',
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                        }) : '—';
+                                    })()}
                                 </div>
 
                                 <button
