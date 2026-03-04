@@ -321,7 +321,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { quizId, answers, timeTaken, questions: clientQuestions, tabSwitchCount, terminatedByProctor } = await request.json();
+    const {
+      quizId,
+      answers,
+      timeTaken,
+      questions: clientQuestions,
+      tabSwitchCount,
+      terminatedByProctor,
+      proctoringSummary,
+      proctoringEvents,
+    } = await request.json();
 
     if (!quizId || !answers) {
       return NextResponse.json(
@@ -479,6 +488,10 @@ export async function POST(request: Request) {
         focusTopics,
         ...(typeof tabSwitchCount === 'number' ? { tabSwitchCount } : {}),
         ...(typeof terminatedByProctor === 'boolean' ? { terminatedByProctor } : {}),
+        ...(proctoringSummary && typeof proctoringSummary === 'object'
+          ? { proctoringSummary }
+          : {}),
+        ...(Array.isArray(proctoringEvents) ? { proctoringEvents } : {}),
       });
     } catch (err) {
       console.error('Failed to persist quiz attempt:', err);

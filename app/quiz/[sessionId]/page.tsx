@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, use, useCallback } from 'react';
+import { useEffect, useState, use, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/layout/Navbar';
 import QuestionRenderer, {
@@ -18,7 +18,6 @@ import { useProctoring } from '@/hooks/useProctoring';
 import {
   ProctoringGate,
   TabSwitchWarningDialog,
-  CameraPreview,
   TabSwitchBadge,
 } from '@/components/quiz/ProctoringOverlay';
 
@@ -153,6 +152,7 @@ export default function ActiveQuizPage({
   const [timer, setTimer] = useState(0);
   const [flagged, setFlagged] = useState<Set<number>>(new Set());
   const [proctoringReady, setProctoringReady] = useState(false);
+  const monitoringVideoRef = useRef<HTMLVideoElement | null>(null);
 
   // ── Fetch quiz data ─────────────────────────────────────────
   useEffect(() => {
@@ -220,6 +220,21 @@ export default function ActiveQuizPage({
     onTerminate: handleFinishRef,
   });
 
+  useEffect(() => {
+    const videoEl = monitoringVideoRef.current;
+    if (!videoEl || !proctoring.cameraStream) return;
+    videoEl.srcObject = proctoring.cameraStream;
+  }, [proctoring.cameraStream]);
+
+  useEffect(() => {
+    const videoEl = monitoringVideoRef.current;
+    if (!proctoringReady || !videoEl || !proctoring.cameraStream) return;
+    void proctoring.startFaceMonitoring(videoEl);
+    return () => {
+      proctoring.stopFaceMonitoring();
+    };
+  }, [proctoringReady, proctoring.cameraStream, proctoring.startFaceMonitoring, proctoring.stopFaceMonitoring]);
+
   // ── Handle answer from QuestionRenderer ─────────────────────
   // No instant feedback — record answer and auto-advance.
   const handleAnswer = (result: QuestionResult) => {
@@ -258,6 +273,12 @@ export default function ActiveQuizPage({
           questions: quiz.questions,
           tabSwitchCount: proctoring.tabSwitchCount,
           terminatedByProctor: proctoring.terminated,
+          proctoringSummary: {
+            violationsTotal: proctoring.violationCount,
+            terminatedByProctor: proctoring.terminated,
+            terminationReason: proctoring.terminatedReason ?? undefined,
+          },
+          proctoringEvents: proctoring.violationEvents,
         }),
       });
       const results = await res.json();
@@ -375,8 +396,10 @@ export default function ActiveQuizPage({
           }}
           requestCamera={proctoring.requestCamera}
           requestFullscreen={proctoring.requestFullscreen}
+          runStartFaceCheck={proctoring.runStartFaceCheck}
           cameraStream={proctoring.cameraStream}
           cameraError={proctoring.cameraError}
+          faceStatus={proctoring.faceStatus}
         />
       )}
 
@@ -388,8 +411,23 @@ export default function ActiveQuizPage({
         onDismiss={proctoring.dismissWarning}
       />
 
-      {/* Camera Preview (corner) */}
-      {proctoringReady && <CameraPreview stream={proctoring.cameraStream} />}
+      {/* Hidden camera feed for background proctoring checks */}
+      {proctoringReady && (
+        <video
+          ref={monitoringVideoRef}
+          autoPlay
+          muted
+          playsInline
+          style={{
+            position: 'fixed',
+            width: '1px',
+            height: '1px',
+            opacity: 0,
+            pointerEvents: 'none',
+          }}
+          aria-hidden="true"
+        />
+      )}
 
       <main
         style={{

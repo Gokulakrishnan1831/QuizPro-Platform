@@ -17,6 +17,7 @@
     "test:load:report": "artillery run --output tests/load/results.json tests/load/artillery.yml"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.14",
     "@duckdb/duckdb-wasm": "^1.33.1-dev18.0",
     "@monaco-editor/react": "^4.7.0",
     "@neondatabase/serverless": "^1.0.2",

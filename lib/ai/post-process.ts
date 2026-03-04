@@ -131,7 +131,10 @@ INSERT INTO ${tableName} VALUES (5, 'Item E', 250, 'X');`;
  * Ensures SQL_HANDS_ON questions have setupSQL and
  * EXCEL_HANDS_ON questions have columns/initialData.
  */
-export function postProcessQuestions(questions: any[]): any[] {
+export function postProcessQuestions(
+    questions: any[],
+    opts?: { difficultyFloor?: number; difficultyCeiling?: number }
+): any[] {
     return questions.map((q) => {
         const rawType = String(q.type ?? 'MCQ').toUpperCase();
         const type = rawType === 'POWERBI_MCQ' ? 'MCQ' : rawType;
@@ -190,6 +193,12 @@ export function postProcessQuestions(questions: any[]): any[] {
         q.difficulty = Number.isFinite(difficultyNum)
             ? Math.max(1, Math.min(10, Math.round(difficultyNum)))
             : 5;
+        if (typeof opts?.difficultyFloor === 'number') {
+            q.difficulty = Math.max(q.difficulty, Math.round(opts.difficultyFloor));
+        }
+        if (typeof opts?.difficultyCeiling === 'number') {
+            q.difficulty = Math.min(q.difficulty, Math.round(opts.difficultyCeiling));
+        }
 
         if (type === 'SQL_HANDS_ON') {
             // Fix missing setupSQL
