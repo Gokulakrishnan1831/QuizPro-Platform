@@ -19,7 +19,7 @@ import type { FaceStatus } from '@/lib/proctoring/faceMonitor';
 interface ProctoringGateProps {
   onReady: () => void;
   requestCamera: () => Promise<boolean>;
-  requestFullscreen: () => Promise<void>;
+  requestFullscreen: () => Promise<boolean | void>;
   runStartFaceCheck: (videoEl: HTMLVideoElement) => Promise<boolean>;
   cameraStream: MediaStream | null;
   cameraError: string | null;
@@ -42,39 +42,96 @@ export function ProctoringGate({
   cameraError,
   faceStatus,
 }: ProctoringGateProps) {
-  const [cameraGranted, setCameraGranted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [faceVerified, setFaceVerified] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const cameraGranted = Boolean(cameraStream);
 
   useEffect(() => {
     if (cameraStream && videoRef.current) {
       videoRef.current.srcObject = cameraStream;
-      setCameraGranted(true);
     }
   }, [cameraStream]);
 
+  const exitFullscreenIfActive = async () => {
+    const fullscreenDocument = document as Document & {
+      webkitFullscreenElement?: Element | null;
+      msFullscreenElement?: Element | null;
+      webkitExitFullscreen?: () => Promise<void> | void;
+      msExitFullscreen?: () => Promise<void> | void;
+    };
+
+    const activeFullscreenElement =
+      document.fullscreenElement ??
+      fullscreenDocument.webkitFullscreenElement ??
+      fullscreenDocument.msFullscreenElement ??
+      null;
+
+    if (!activeFullscreenElement) return;
+
+    try {
+      if (document.exitFullscreen) {
+        await document.exitFullscreen();
+      } else if (fullscreenDocument.webkitExitFullscreen) {
+        await fullscreenDocument.webkitExitFullscreen();
+      } else if (fullscreenDocument.msExitFullscreen) {
+        await fullscreenDocument.msExitFullscreen();
+      }
+    } catch {
+      // Ignore exit failures and keep the visible retry error instead.
+    }
+  };
+
+  const waitForPreview = async () => {
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < 1500) {
+      const videoEl = videoRef.current;
+      if (videoEl?.srcObject) return videoEl;
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    }
+
+    return null;
+  };
+
   const handleStart = async () => {
     setLoading(true);
+    setFaceVerified(false);
+    setStartError(null);
+
+    const fullscreenGranted = await requestFullscreen();
+    if (fullscreenGranted === false) {
+      setStartError('Fullscreen could not be enabled. Allow fullscreen and try again.');
+      setLoading(false);
+      return;
+    }
 
     if (!cameraGranted) {
       const ok = await requestCamera();
       if (!ok) {
+        await exitFullscreenIfActive();
         setLoading(false);
         return;
       }
     }
 
-    if (videoRef.current) {
-      const verified = await runStartFaceCheck(videoRef.current);
-      setFaceVerified(verified);
-      if (!verified) {
-        setLoading(false);
-        return;
-      }
+    const videoEl = await waitForPreview();
+    if (!videoEl) {
+      await exitFullscreenIfActive();
+      setStartError('Camera preview did not initialize. Please try again.');
+      setLoading(false);
+      return;
     }
 
-    await requestFullscreen();
+    const verified = await runStartFaceCheck(videoEl);
+    setFaceVerified(verified);
+    if (!verified) {
+      await exitFullscreenIfActive();
+      setLoading(false);
+      return;
+    }
+
     setLoading(false);
     onReady();
   };
@@ -83,8 +140,8 @@ export function ProctoringGate({
     { icon: Camera, text: 'Camera stays on during test', color: '#6366f1' },
     { icon: UserCheck, text: 'Face must be detected at start', color: '#10b981' },
     { icon: MonitorX, text: 'Camera off / face away warned once, then terminate', color: '#ef4444' },
-    { icon: Maximize, text: 'Fullscreen mode is enforced', color: '#14b8a6' },
-    { icon: Copy, text: 'Copy and cut are blocked', color: '#f59e0b' },
+    { icon: Maximize, text: 'Exiting fullscreen is warned once, then terminate', color: '#14b8a6' },
+    { icon: Copy, text: 'Copy, paste, cut, select-all, print, and save shortcuts are blocked', color: '#f59e0b' },
   ];
 
   const faceStatusText =
@@ -233,6 +290,7 @@ export function ProctoringGate({
 
         {cameraGranted && (
           <div
+            data-testid="proctor-face-status"
             style={{
               marginBottom: '1rem',
               padding: '10px 14px',
@@ -248,8 +306,9 @@ export function ProctoringGate({
           </div>
         )}
 
-        {cameraError && (
+        {(cameraError || startError) && (
           <div
+            data-testid="proctor-camera-error"
             style={{
               marginBottom: '1.5rem',
               padding: '12px 16px',
@@ -264,7 +323,7 @@ export function ProctoringGate({
             }}
           >
             <XCircle size={16} />
-            {cameraError}
+            {cameraError ?? startError}
           </div>
         )}
 
@@ -283,6 +342,7 @@ export function ProctoringGate({
         )}
 
         <motion.button
+          data-testid="proctor-start-btn"
           whileHover={{ scale: loading ? 1 : 1.02 }}
           whileTap={{ scale: loading ? 1 : 0.98 }}
           onClick={handleStart}
@@ -332,6 +392,7 @@ export function TabSwitchWarningDialog({
     <AnimatePresence>
       {show && (
         <motion.div
+          data-testid="proctor-warning-dialog"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -379,6 +440,7 @@ export function TabSwitchWarningDialog({
             </div>
 
             <h3
+              data-testid="proctor-warning-title"
               style={{
                 fontSize: '1.3rem',
                 fontWeight: '700',
@@ -390,6 +452,7 @@ export function TabSwitchWarningDialog({
             </h3>
 
             <p
+              data-testid="proctor-warning-message"
               style={{
                 color: '#94a3b8',
                 fontSize: '0.9rem',
@@ -402,6 +465,7 @@ export function TabSwitchWarningDialog({
 
             {!terminated && (
               <motion.button
+                data-testid="proctor-warning-dismiss"
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={onDismiss}
@@ -421,7 +485,7 @@ export function TabSwitchWarningDialog({
             )}
 
             {terminated && (
-              <p style={{ color: '#6b7280', fontSize: '0.8rem' }}>
+              <p data-testid="proctor-terminated-note" style={{ color: '#6b7280', fontSize: '0.8rem' }}>
                 Submitting your answers...
               </p>
             )}
@@ -437,6 +501,7 @@ export function TabSwitchBadge({ count }: { count: number }) {
 
   return (
     <span
+      data-testid="proctor-tab-badge"
       style={{
         display: 'inline-flex',
         alignItems: 'center',

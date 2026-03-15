@@ -140,6 +140,7 @@ export default function ActiveQuizPage({
 }: {
   params: Promise<{ sessionId: string }>;
 }) {
+  const isE2EProctoring = process.env.NEXT_PUBLIC_E2E_PROCTORING === '1';
   const { sessionId } = use(params);
   const router = useRouter();
 
@@ -193,10 +194,10 @@ export default function ActiveQuizPage({
 
   // ── Timer ───────────────────────────────────────────────────
   useEffect(() => {
-    if (loading) return;
+    if (loading || !proctoringReady) return;
     const interval = setInterval(() => setTimer((t) => t + 1), 1000);
     return () => clearInterval(interval);
-  }, [loading]);
+  }, [loading, proctoringReady]);
 
   // ── Auto-submit when time runs out ──────────────────────────
   useEffect(() => {
@@ -218,6 +219,19 @@ export default function ActiveQuizPage({
     enabled: !loading && proctoringReady,
     maxTabSwitches: 2,
     onTerminate: handleFinishRef,
+    ...(isE2EProctoring
+      ? {
+          monitorIntervalMs: 250,
+          faceViolationGraceMs: 1200,
+          cameraOffGraceMs: 1000,
+          faceRecoveryStableMs: 1000,
+          minConsecutiveSamples: 2,
+          violationCooldownMs: 1200,
+          startFaceCheckTimeoutMs: 2500,
+          startFaceCheckStableMs: 500,
+          startFaceCheckPollMs: 100,
+        }
+      : {}),
   });
 
   useEffect(() => {
@@ -420,22 +434,26 @@ export default function ActiveQuizPage({
           playsInline
           style={{
             position: 'fixed',
-            width: '1px',
-            height: '1px',
+            top: '-9999px',
+            left: '-9999px',
+            width: '320px',
+            height: '240px',
             opacity: 0,
             pointerEvents: 'none',
+            objectFit: 'cover',
           }}
           aria-hidden="true"
         />
       )}
 
-      <main
-        style={{
-          maxWidth: isHandsOn ? '900px' : '800px',
-          margin: '0 auto',
-          padding: '0 20px',
-        }}
-      >
+      {proctoringReady && (
+        <main
+          style={{
+            maxWidth: isHandsOn ? '900px' : '800px',
+            margin: '0 auto',
+            padding: '0 20px',
+          }}
+        >
         {/* ── Top Bar: Progress + Timer + Flag ──────────────── */}
         <div style={{ marginBottom: '1.5rem' }}>
           <div
@@ -610,7 +628,8 @@ export default function ActiveQuizPage({
             </p>
           </motion.div>
         )}
-      </main>
+        </main>
+      )}
     </div>
   );
 }
