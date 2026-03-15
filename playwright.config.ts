@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const PW_PORT = Number(process.env.PLAYWRIGHT_PORT ?? 3100);
+const PW_BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${PW_PORT}`;
+
 export default defineConfig({
     testDir: './tests/e2e',
     timeout: 45_000,
@@ -11,7 +14,7 @@ export default defineConfig({
     reporter: process.env.CI ? 'dot' : 'list',
 
     use: {
-        baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000',
+        baseURL: PW_BASE_URL,
         trace: 'on-first-retry',
         screenshot: 'only-on-failure',
         video: 'on-first-retry',
@@ -30,9 +33,13 @@ export default defineConfig({
 
     // Auto-start dev server when running tests locally
     webServer: {
-        command: 'npx next dev --turbopack',
-        url: 'http://localhost:3000',
-        reuseExistingServer: !process.env.CI,
+        command: `npx next dev --turbopack -p ${PW_PORT}`,
+        url: PW_BASE_URL,
+        reuseExistingServer: false,
         timeout: 120_000,
+        env: {
+            ...process.env,
+            NEXT_PUBLIC_E2E_PROCTORING: '1',
+        },
     },
 });

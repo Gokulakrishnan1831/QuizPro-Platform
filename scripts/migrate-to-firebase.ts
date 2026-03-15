@@ -585,7 +585,7 @@ async function migrateAuthUsers() {
                 uid: user.id,
                 email: user.email,
                 emailVerified: user.email_confirmed_at ? true : false,
-                displayName: user.user_metadata?.full_name ?? user.email?.split('@')[0],
+                displayName: user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? undefined,
                 disabled: false,
             };
 
@@ -596,7 +596,7 @@ async function migrateAuthUsers() {
                         uid: user.id,
                         email: user.email,
                         emailVerified: !!user.email_confirmed_at,
-                        displayName: createRequest.displayName,
+                        displayName: createRequest.displayName ?? undefined,
                         passwordHash: Buffer.from(user.encrypted_password),
                     }],
                     {

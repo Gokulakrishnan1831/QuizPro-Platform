@@ -25,6 +25,7 @@ export const COLLECTIONS = {
     COMPANY_INTERVIEW_PATTERNS: 'companyInterviewPatterns',
     INTERVIEW_QUESTION_BANK: 'interviewQuestionBank',
     QUIZ_GENERATION_TRACES: 'quizGenerationTraces',
+    USER_QUESTION_HISTORY: 'userQuestionHistory',
 } as const;
 
 /* ─── Enums (mirrors Prisma enums) ────────────────────────────── */
@@ -105,6 +106,16 @@ export interface QuizAttemptDoc {
     rank?: number | null;
     tabSwitchCount?: number;
     terminatedByProctor?: boolean;
+    proctoringSummary?: {
+        violationsTotal: number;
+        terminatedByProctor: boolean;
+        terminationReason?: string;
+    };
+    proctoringEvents?: Array<{
+        type: 'tab_switch' | 'fullscreen_exit' | 'camera_off' | 'no_face' | 'face_away';
+        atSecond: number;
+        details?: Record<string, unknown>;
+    }>;
     completedAt: Timestamp;
 }
 
@@ -228,4 +239,16 @@ export interface QuizGenerationTraceDoc {
     usedFallback: boolean;
     trace: Record<string, any>;
     createdAt: Timestamp;
+}
+
+/** `userQuestionHistory` collection */
+export interface UserQuestionHistoryDoc {
+    userId: string;
+    quizId?: string | null;
+    skill: string;
+    quizGoal: string;
+    profileType: ProfileType;
+    questionSignature: string;
+    questionType?: string | null;
+    servedAt: Timestamp;
 }

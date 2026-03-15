@@ -16,7 +16,7 @@ const FEATURES = [
         color: '#6366f1',
         title: 'AI Question Engine',
         description:
-            'Groq-powered LLM generates infinite unique questions. No two quizzes are the same — ever.',
+            'OpenAI 5.3 powered LLM generates infinite unique questions. No two quizzes are the same - ever.',
     },
     {
         icon: Timer,

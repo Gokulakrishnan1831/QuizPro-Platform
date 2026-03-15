@@ -23,6 +23,9 @@ interface ResearchParams {
     profileType: 'FRESHER' | 'EXPERIENCED';
     experienceYears?: number;
     existingPatterns?: RankedInterviewPattern[];
+    avoidQuestionFingerprints?: string[];
+    difficultyFloor?: number;
+    difficultyCeiling?: number;
 }
 
 /**
@@ -41,6 +44,9 @@ function buildResearchPrompt(params: ResearchParams): string {
         profileType,
         experienceYears,
         existingPatterns = [],
+        avoidQuestionFingerprints = [],
+        difficultyFloor,
+        difficultyCeiling,
     } = params;
 
     const groundingContext =
@@ -62,10 +68,10 @@ function buildResearchPrompt(params: ResearchParams): string {
 
     const difficultyGuide =
         profileType === 'FRESHER'
-            ? 'Easy to Medium (difficulty 2-5). Focus on fundamentals and basic syntax.'
+            ? 'Intermediate to Hard (difficulty 5-7). Avoid beginner-only recall questions.'
             : (experienceYears ?? 0) >= 5
-                ? 'Medium to Hard (difficulty 5-9). Include advanced optimization and edge-case questions.'
-                : 'Medium (difficulty 4-7). Mix of conceptual and practical questions.';
+                ? 'Hard (difficulty 7-9). Include advanced optimization and edge-case questions.'
+                : 'Intermediate to Hard (difficulty 6-8). Mix conceptual depth with practical complexity.';
 
     return `You are an expert interview question researcher for data analytics roles.
 
@@ -77,6 +83,9 @@ ${jdText ? `Job Description:\n${jdText}\n` : ''}
 ---- CANDIDATE PROFILE ----
 Level: ${profileType}${experienceYears ? `, ${experienceYears} years experience` : ''}
 Difficulty: ${difficultyGuide}
+${typeof difficultyFloor === 'number' && typeof difficultyCeiling === 'number'
+            ? `Strict band: every question difficulty must be between ${difficultyFloor} and ${difficultyCeiling}.`
+            : ''}
 
 ---- TASK ----
 Generate ${questionCount} interview questions that ${company} is known to ask
@@ -84,6 +93,11 @@ for ${role.display} positions. Draw from your training data knowledge of intervi
 patterns commonly reported on Glassdoor, AmbitionBox, and LinkedIn for ${company}.
 
 ${groundingContext ? `\n${groundingContext}\n` : ''}
+${avoidQuestionFingerprints.length > 0
+            ? `\n---- PREVIOUSLY SERVED QUESTION SIGNATURES (DO NOT REPEAT) ----
+${avoidQuestionFingerprints.slice(0, 60).map((v, i) => `${i + 1}. ${v}`).join('\n')}
+`
+            : ''}
 
 ---- SKILL DISTRIBUTION ----
 ${skillDistribution}
@@ -163,13 +177,14 @@ ${hasHandsOn ? `---- SQL HANDS-ON FORMAT ----
 5. SQL_HANDS_ON requires complete setupSQL with CREATE TABLE + INSERT INTO.
 6. EXCEL_HANDS_ON requires columns, initialData, editableCells, expectedFormulas, expectedValues.
 7. Never generate hands-on types for POWERBI skill.
-8. Vary difficulty: mix easy, medium, and hard questions.
+8. Keep all difficulties inside the strict band above; do not generate easy-only questions.
 9. For SQL datasets, use scenarios relevant to ${company}'s domain/industry.
-10. Return ONLY a valid JSON array of ${questionCount} question objects. No markdown, no commentary.`;
+10. Never repeat previous question signatures listed above.
+11. Return ONLY a valid JSON array of ${questionCount} question objects. No markdown, no commentary.`;
 }
 
 /**
- * Generates company-specific interview questions using the Groq LLM.
+ * Generates company-specific interview questions using OpenAI.
  * Returns post-processed questions ready for quiz assembly or caching.
  */
 export async function researchAndGenerateQuestions(

@@ -7,6 +7,7 @@
 
 import { db } from './admin';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { decodeFirestoreSafeDocument, encodeFirestoreSafeDocument } from './firestore-safe';
 import {
     COLLECTIONS,
     type UserDoc,
@@ -24,6 +25,7 @@ import {
     type CompanyInterviewPatternDoc,
     type InterviewQuestionBankDoc,
     type QuizGenerationTraceDoc,
+    type UserQuestionHistoryDoc,
 } from './collections';
 
 /* ─── Utility ─────────────────────────────────────────────────── */
@@ -127,17 +129,17 @@ export async function createAdmin(data: Omit<AdminDoc, 'createdAt' | 'updatedAt'
 
 export async function createQuiz(data: Omit<QuizDoc, 'createdAt'>): Promise<string> {
     const id = generateId();
-    await db.collection(COLLECTIONS.QUIZZES).doc(id).set({
+    await db.collection(COLLECTIONS.QUIZZES).doc(id).set(encodeFirestoreSafeDocument({
         ...data,
         createdAt: now(),
-    });
+    }));
     return id;
 }
 
 export async function getQuizById(id: string): Promise<(QuizDoc & { id: string }) | null> {
     const snap = await db.collection(COLLECTIONS.QUIZZES).doc(id).get();
     if (!snap.exists) return null;
-    return { id: snap.id, ...snap.data() } as QuizDoc & { id: string };
+    return decodeFirestoreSafeDocument({ id: snap.id, ...snap.data() } as QuizDoc & { id: string });
 }
 
 export async function getQuizCount(): Promise<number> {
@@ -554,4 +556,77 @@ export async function createQuizGenerationTrace(
         createdAt: now(),
     });
     return id;
+}
+
+/* ─── UserQuestionHistory ───────────────────────────────────── */
+
+export async function getRecentQuestionHistory(params: {
+    userId: string;
+    sinceDays: number;
+    skills?: string[];
+    quizGoal?: string;
+    profileType?: string;
+}): Promise<(UserQuestionHistoryDoc & { id: string })[]> {
+    const cutoff = Timestamp.fromMillis(Date.now() - params.sinceDays * 24 * 60 * 60 * 1000);
+    const base = db.collection(COLLECTIONS.USER_QUESTION_HISTORY);
+    let rows: (UserQuestionHistoryDoc & { id: string })[] = [];
+
+    try {
+        // Fast path: uses servedAt range + sort in Firestore.
+        const snap = await base
+            .where('userId', '==', params.userId)
+            .where('servedAt', '>=', cutoff)
+            .orderBy('servedAt', 'desc')
+            .get();
+        rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as UserQuestionHistoryDoc & { id: string });
+    } catch (err: any) {
+        // Fallback path when composite index is not ready.
+        const code = Number(err?.code ?? 0);
+        const details = String(err?.details ?? '');
+        const needsIndex = code === 9 || details.includes('requires an index');
+        if (!needsIndex) throw err;
+
+        const snap = await base
+            .where('userId', '==', params.userId)
+            .get();
+        rows = snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }) as UserQuestionHistoryDoc & { id: string })
+            .filter((row) => {
+                const servedAtMs = (row.servedAt as any)?.toMillis?.() ?? 0;
+                return servedAtMs >= cutoff.toMillis();
+            })
+            .sort((a, b) => {
+                const aMs = (a.servedAt as any)?.toMillis?.() ?? 0;
+                const bMs = (b.servedAt as any)?.toMillis?.() ?? 0;
+                return bMs - aMs;
+            });
+    }
+
+    if (params.quizGoal) {
+        rows = rows.filter((row) => String(row.quizGoal).toUpperCase() === String(params.quizGoal).toUpperCase());
+    }
+    if (params.profileType) {
+        rows = rows.filter((row) => String(row.profileType).toUpperCase() === String(params.profileType).toUpperCase());
+    }
+    if (params.skills?.length) {
+        const set = new Set(params.skills.map((s) => String(s).toUpperCase()));
+        rows = rows.filter((row) => set.has(String(row.skill).toUpperCase()));
+    }
+    return rows;
+}
+
+export async function createQuestionHistoryBatch(
+    entries: Array<Omit<UserQuestionHistoryDoc, 'servedAt'> & { servedAt?: Timestamp }>
+): Promise<number> {
+    if (entries.length === 0) return 0;
+    const batch = db.batch();
+    for (const entry of entries) {
+        const ref = db.collection(COLLECTIONS.USER_QUESTION_HISTORY).doc(generateId());
+        batch.set(ref, {
+            ...entry,
+            servedAt: entry.servedAt ?? now(),
+        });
+    }
+    await batch.commit();
+    return entries.length;
 }

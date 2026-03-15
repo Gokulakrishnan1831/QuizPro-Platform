@@ -8,17 +8,17 @@ export type SkillType = 'EXCEL' | 'SQL' | 'POWERBI';
 export type QuizGoalType = 'PRACTICE' | 'INTERVIEW_PREP';
 
 function difficultyRange(profileType: ProfileType, experienceYears?: number): string {
-  if (profileType === 'FRESHER') return 'Easy to Medium (difficulty 2-5 out of 10)';
-  if ((experienceYears ?? 0) >= 5) return 'Medium to Hard (difficulty 5-9 out of 10)';
-  return 'Medium (difficulty 4-7 out of 10)';
+  if (profileType === 'FRESHER') return 'Intermediate to Hard (difficulty 5-7 out of 10)';
+  if ((experienceYears ?? 0) >= 5) return 'Hard (difficulty 7-9 out of 10)';
+  return 'Intermediate to Hard (difficulty 6-8 out of 10)';
 }
 
 function profileContext(profileType: ProfileType, experienceYears?: number): string {
   if (profileType === 'FRESHER') {
     return `The candidate is a fresh graduate with little to no professional experience.
-Focus on fundamental concepts, basic syntax, and beginner-friendly scenarios.
-Include questions that test understanding of core concepts rather than advanced patterns.
-Use simple, relatable datasets (e.g., student marks, library books, employee directory).`;
+Focus on strong fundamentals plus interview-ready problem solving.
+Include questions that test core concepts in realistic, moderately complex scenarios.
+Use practical datasets (e.g., product analytics, customer cohorts, hiring funnels).`;
   }
   if ((experienceYears ?? 0) >= 5) {
     return `The candidate is a senior data analyst with ${experienceYears}+ years of experience.
@@ -62,8 +62,23 @@ export function buildQuizPrompt(params: {
   jdText?: string;
   jdCompany?: string;
   interviewGroundingContext?: string;
+  avoidQuestionFingerprints?: string[];
+  difficultyFloor?: number;
+  difficultyCeiling?: number;
 }): string {
-  const { profileType, skills, numQuestions, experienceYears, quizGoal, jdText, jdCompany, interviewGroundingContext } = params;
+  const {
+    profileType,
+    skills,
+    numQuestions,
+    experienceYears,
+    quizGoal,
+    jdText,
+    jdCompany,
+    interviewGroundingContext,
+    avoidQuestionFingerprints = [],
+    difficultyFloor,
+    difficultyCeiling,
+  } = params;
   const questionsPerSkill = Math.ceil(numQuestions / skills.length);
   const difficulty = difficultyRange(profileType, experienceYears);
   const includesPowerBI = skills.includes('POWERBI');
@@ -80,9 +95,17 @@ ${experienceYears ? `Experience: ${experienceYears} years` : ''}
 Skills to cover: ${skills.join(', ')}
 Aim for roughly ${questionsPerSkill} questions per skill.
 Difficulty range: ${difficulty}
+${typeof difficultyFloor === 'number' && typeof difficultyCeiling === 'number'
+    ? `Hard constraint: Every question difficulty must be between ${difficultyFloor} and ${difficultyCeiling}.`
+    : ''}
 
 ${quizGoal === 'INTERVIEW_PREP' && jdCompany ? interviewPrepContext(jdCompany, jdText) : ''}
 ${quizGoal === 'INTERVIEW_PREP' && interviewGroundingContext ? `\n${interviewGroundingContext}\n` : ''}
+${avoidQuestionFingerprints.length > 0
+    ? `\n---- PREVIOUSLY SERVED QUESTION SIGNATURES (DO NOT REPEAT) ----
+${avoidQuestionFingerprints.slice(0, 60).map((v, i) => `${i + 1}. ${v}`).join('\n')}
+`
+    : ''}
 
 ---- MCQ FORMAT ----
 {
@@ -116,7 +139,8 @@ ${includesPowerBI ? `---- POWERBI FILL BLANK FORMAT ----
 4. Never generate SQL_HANDS_ON or EXCEL_HANDS_ON when skills are POWERBI-only.
 5. Questions must be diverse and solutions should be educational.
 6. Prefer question styles and topic distributions from internal company interview signals when provided.
-7. Return only a JSON array of ${numQuestions} question objects. No markdown or commentary.`;
+7. Do not repeat previous question signatures listed above; keep concepts and wording clearly distinct.
+8. Return only a JSON array of ${numQuestions} question objects. No markdown or commentary.`;
 }
 
 export function buildMixedQuizPrompt(params: {
@@ -129,6 +153,9 @@ export function buildMixedQuizPrompt(params: {
   jdText?: string;
   jdCompany?: string;
   interviewGroundingContext?: string;
+  avoidQuestionFingerprints?: string[];
+  difficultyFloor?: number;
+  difficultyCeiling?: number;
 }): string {
   const {
     profileType,
@@ -140,6 +167,9 @@ export function buildMixedQuizPrompt(params: {
     jdText,
     jdCompany,
     interviewGroundingContext,
+    avoidQuestionFingerprints = [],
+    difficultyFloor,
+    difficultyCeiling,
   } = params;
 
   const handsOnCount = Math.max(1, Math.round(numQuestions * handsOnRatio));
@@ -160,11 +190,19 @@ ${experienceYears ? `Experience: ${experienceYears} years` : ''}
 ---- QUIZ PARAMETERS ----
 Skills to cover: ${skills.join(', ')}
 Difficulty range: ${difficulty}
+${typeof difficultyFloor === 'number' && typeof difficultyCeiling === 'number'
+    ? `Hard constraint: Every question difficulty must be between ${difficultyFloor} and ${difficultyCeiling}.`
+    : ''}
 MCQ questions: ${mcqCount}
 ${hasHandsOn ? `Hands-on questions: ${handsOnCount} (from: ${handsOnSkills.join(', ')})` : `All ${numQuestions} questions should be non-hands-on.`}
 
 ${quizGoal === 'INTERVIEW_PREP' && jdCompany ? interviewPrepContext(jdCompany, jdText) : ''}
 ${quizGoal === 'INTERVIEW_PREP' && interviewGroundingContext ? `\n${interviewGroundingContext}\n` : ''}
+${avoidQuestionFingerprints.length > 0
+    ? `\n---- PREVIOUSLY SERVED QUESTION SIGNATURES (DO NOT REPEAT) ----
+${avoidQuestionFingerprints.slice(0, 60).map((v, i) => `${i + 1}. ${v}`).join('\n')}
+`
+    : ''}
 
 ---- MCQ FORMAT ----
 {
@@ -229,7 +267,8 @@ ${hasHandsOn ? `---- SQL HANDS-ON FORMAT ----
 5. EXCEL_HANDS_ON requires columns, initialData, editableCells, expectedFormulas, expectedValues.
 6. Questions must be diverse and solutions educational.
 7. Prefer question styles and topic distributions from internal company interview signals when provided.
-8. Return only a JSON array of ${numQuestions} question objects. No markdown or commentary.`;
+8. Do not repeat previous question signatures listed above; keep concepts and wording clearly distinct.
+9. Return only a JSON array of ${numQuestions} question objects. No markdown or commentary.`;
 }
 
 export function buildPerformanceSummaryPrompt(params: {

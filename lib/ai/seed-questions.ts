@@ -1,5 +1,5 @@
 /**
- * Static question bank — used as fallback when Groq is unavailable
+ * Static question bank — used as fallback when AI generation is unavailable
  * or for seeding the database via `prisma db seed`.
  *
  * Each entry matches the Question model shape (minus `id` and `createdAt`).
@@ -420,7 +420,7 @@ INSERT INTO employees VALUES
 
 /**
  * Fetch random questions from the seed bank by skill.
- * Used as fallback when Groq is unavailable.
+ * Used as fallback when AI generation is unavailable.
  */
 export function getRandomSeedQuestions(
     skills: Array<'EXCEL' | 'SQL' | 'POWERBI' | 'PYTHON'>,

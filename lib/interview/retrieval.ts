@@ -1,8 +1,3 @@
-import { db } from '@/lib/firebase/admin';
-import { COLLECTIONS } from '@/lib/firebase/collections';
-import { createQuizGenerationTrace } from '@/lib/firebase/db';
-import { getInterviewPatterns } from '@/lib/firebase/db';
-
 const STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'in', 'into',
   'is', 'it', 'of', 'on', 'or', 'that', 'the', 'to', 'with', 'you', 'your', 'we',
@@ -192,6 +187,7 @@ export async function fetchCompanyInterviewPatterns(params: {
   const normalizedCompany = normalizeCompanyName(company);
   if (!normalizedCompany) return [];
 
+  const { getInterviewPatterns } = await import('@/lib/firebase/db');
   const docs = await getInterviewPatterns({
     normalizedCompany,
     isActive: true,
@@ -232,6 +228,7 @@ export async function recordQuizGenerationTrace(params: {
   trace?: Record<string, unknown>;
 }): Promise<void> {
   try {
+    const { createQuizGenerationTrace } = await import('@/lib/firebase/db');
     await createQuizGenerationTrace({
       userId: params.userId,
       quizId: params.quizId ?? null,

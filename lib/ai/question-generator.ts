@@ -7,7 +7,7 @@ interface GenerateQuestionParams {
 }
 
 /**
- * Generate a single MCQ question using Groq AI.
+ * Generate a single MCQ question using OpenAI.
  * Returns a parsed question object ready for quiz playback.
  *
  * Note: The output format matches the quiz JSONB schema (type, skill,

@@ -6,7 +6,7 @@
 
 import { test, expect } from '@playwright/test';
 
-const BASE = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000';
+const BASE = process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${process.env.PLAYWRIGHT_PORT ?? 3100}`;
 
 // ─── Helper ──────────────────────────────────────────────────
 async function signUpAndLogin(page: any, email: string, password = 'Test@12345') {

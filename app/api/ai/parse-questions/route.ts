@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Groq from 'groq-sdk';
-
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY || '',
-});
+import { aiCompletion } from '@/lib/ai/groq-client';
 
 export async function POST(req: NextRequest) {
   try {
@@ -40,16 +36,13 @@ export async function POST(req: NextRequest) {
       Return ONLY the JSON array. Do not wrap in markdown code blocks.
     `;
 
-    const chatCompletion = await groq.chat.completions.create({
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Extract questions from this text:\n\n${text}` },
-      ],
-      model: 'llama3-70b-8192',
-      temperature: 0.1, // Low temp for strict JSON adherence
-    });
-
-    const rawContent = chatCompletion.choices[0]?.message?.content || '[]';
+    const rawContent =
+      (await aiCompletion({
+        systemInstruction: systemPrompt,
+        prompt: `Extract questions from this text:\n\n${text}`,
+        temperature: 0.1,
+        maxOutputTokens: 2048,
+      })) || '[]';
     
     // Clean up potential markdown formatting if the model disobeys
     const cleanJson = rawContent.replace(/```json/g, '').replace(/```/g, '').trim();

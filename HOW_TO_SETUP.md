@@ -7,7 +7,7 @@ This guide gets the project running from zero on a new machine.
 - Node.js 20.x or newer
 - npm 10.x or newer
 - A Firebase project (Auth + Firestore)
-- A Groq API key (for AI quiz generation)
+- An OpenAI API key (for AI quiz generation)
 
 Optional (only for legacy migration scripts):
 
@@ -64,7 +64,9 @@ FIREBASE_SERVICE_ACCOUNT_PATH="D:\\path\\to\\QuizPro-Platform\\quizpro-firebase-
 # Alternative to PATH: FIREBASE_SERVICE_ACCOUNT='{"type":"service_account",...}'
 
 # Required - AI generation
-GROQ_API_KEY="your_groq_api_key"
+OPENAI_API_KEY="your_openai_api_key"
+# Optional override (defaults to gpt-5.3)
+OPENAI_MODEL="gpt-5.3"
 
 # Strongly recommended for production/admin auth hardening
 ADMIN_JWT_SECRET="replace-with-a-long-random-secret"
