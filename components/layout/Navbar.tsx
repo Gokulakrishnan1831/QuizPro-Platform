@@ -1,10 +1,11 @@
 'use client';
 
+import BrandLogo from '@/components/layout/BrandLogo';
 import { auth } from '@/lib/firebase/client';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
+import { LogOut, User as UserIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Zap, LogOut, User as UserIcon, Menu, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 export default function Navbar() {
@@ -12,7 +13,6 @@ export default function Navbar() {
 
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -52,25 +52,22 @@ export default function Navbar() {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          gap: '1rem',
         }}
       >
-        {/* Logo */}
         <Link
           href="/"
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
+            gap: '0.75rem',
             textDecoration: 'none',
+            flexShrink: 0,
           }}
         >
-          <Zap size={28} color="#6366f1" fill="#6366f1" />
-          <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'white' }}>
-            Quiz<span style={{ color: '#06b6d4' }}>Pro</span>
-          </span>
+          <BrandLogo iconSize={34} textSize="1.45rem" />
         </Link>
 
-        {/* Desktop nav */}
         <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
           <Link
             href="/practice"

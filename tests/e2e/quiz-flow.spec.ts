@@ -25,11 +25,13 @@ async function signUpAndLogin(page: any, email: string, password = 'Test@12345')
 // ─── Scenario 1: Public home page loads ──────────────────────
 test('homepage loads with CTA', async ({ page }) => {
     await page.goto(BASE);
-    await expect(page).toHaveTitle(/QuizPro/i);
+    await expect(page).toHaveTitle(/Preplytics/i);
     const heading = page.locator('h1, h2').first();
     await expect(heading).toBeVisible();
     // CTA button exists
-    const cta = page.locator('a[href*="quiz"], button').filter({ hasText: /start|get started|begin/i });
+    const cta = page.locator('a[href*="get-started"], a[href*="quiz"], button').filter({
+        hasText: /start|get started|begin/i,
+    });
     await expect(cta.first()).toBeVisible({ timeout: 10_000 });
 });
 

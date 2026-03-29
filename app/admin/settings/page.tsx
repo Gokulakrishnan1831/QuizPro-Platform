@@ -13,6 +13,7 @@ import {
     IndianRupee,
     User,
 } from 'lucide-react';
+import { BRAND_NAME } from '@/lib/branding';
 
 /* ─── Settings form ──────────────────────────────────────────── */
 
@@ -332,7 +333,7 @@ export default function AdminSettingsPage() {
                                 </label>
                                 <input
                                     className="input-field"
-                                    placeholder="QuizPro by Gautam"
+                                    placeholder={`${BRAND_NAME} by Gautam`}
                                     value={upiName}
                                     onChange={(e) => setUpiName(e.target.value)}
                                     style={{ fontSize: '0.95rem' }}
@@ -357,7 +358,7 @@ export default function AdminSettingsPage() {
                             <User size={32} color="#6b7280" style={{ flexShrink: 0 }} />
                             <div>
                                 <div style={{ fontWeight: '700', color: 'white' }}>
-                                    {upiName || 'QuizPro'}
+                                    {upiName || BRAND_NAME}
                                 </div>
                                 <div style={{ fontSize: '0.82rem', color: '#10b981' }}>
                                     {upiId || 'yourname@upi'}

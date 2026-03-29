@@ -1,5 +1,6 @@
 'use client';
 
+import { BRAND_NAME } from '@/lib/branding';
 import { motion } from 'framer-motion';
 import { Star, Quote } from 'lucide-react';
 
@@ -10,7 +11,7 @@ const TESTIMONIALS = [
         avatar: 'PS',
         color: '#6366f1',
         quote:
-            'The AI-generated questions were shockingly close to what I was asked in my actual Amazon interview. Got my offer within 3 weeks of using QuizPro.',
+            `The AI-generated questions were shockingly close to what I was asked in my actual Amazon interview. Got my offer within 3 weeks of using ${BRAND_NAME}.`,
         stars: 5,
     },
     {
@@ -19,7 +20,7 @@ const TESTIMONIALS = [
         avatar: 'RM',
         color: '#06b6d4',
         quote:
-            'As a career switcher from mechanical engineering, QuizPro helped me bridge the gap. The persona-specific quizzes were a game changer.',
+            `As a career switcher from mechanical engineering, ${BRAND_NAME} helped me bridge the gap. The persona-specific quizzes were a game changer.`,
         stars: 5,
     },
     {

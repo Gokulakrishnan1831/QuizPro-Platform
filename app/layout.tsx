@@ -1,7 +1,14 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import "./globals.css";
 import MentorshipCTA from "@/components/MentorshipCTA";
+import {
+  BRAND_ASSETS,
+  BRAND_DESCRIPTION,
+  BRAND_KEYWORDS,
+  BRAND_NAME,
+  BRAND_TITLE,
+} from "@/lib/branding";
+import "./globals.css";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -15,22 +22,25 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "QuizPro – AI-Powered Data Analyst Interview Prep",
-  description:
-    "Master SQL, Excel & Power BI with AI-generated quizzes, deep analytics, and personalized learning paths. Built for freshers and experienced professionals.",
-  keywords: [
-    "data analyst interview prep",
-    "SQL quiz",
-    "Excel quiz",
-    "Power BI quiz",
-    "AI quiz platform",
-    "data analytics practice",
-  ],
+  title: BRAND_TITLE,
+  description: BRAND_DESCRIPTION,
+  applicationName: BRAND_NAME,
+  keywords: BRAND_KEYWORDS,
+  icons: {
+    icon: BRAND_ASSETS.icon,
+    shortcut: BRAND_ASSETS.icon,
+    apple: BRAND_ASSETS.icon,
+  },
   openGraph: {
-    title: "QuizPro – AI-Powered Data Analyst Interview Prep",
-    description:
-      "Personalized quizzes for SQL, Excel & Power BI. AI-generated, instant grading, deep analytics.",
+    title: BRAND_TITLE,
+    description: BRAND_DESCRIPTION,
     type: "website",
+    images: [
+      {
+        url: BRAND_ASSETS.logo,
+        alt: `${BRAND_NAME} logo`,
+      },
+    ],
   },
 };
 
