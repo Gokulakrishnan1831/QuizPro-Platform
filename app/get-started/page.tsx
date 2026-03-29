@@ -1359,7 +1359,7 @@ export default function SignupPage() {
                       Scan QR or Pay UPI ID
                     </div>
                     <div style={{ fontWeight: '600', color: 'white' }}>
-                      {upiData.upiId || 'quizpro@upi'}
+                      {upiData.upiId || 'preplytics@upi'}
                     </div>
                   </div>
                   <button

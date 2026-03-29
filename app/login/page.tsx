@@ -3,7 +3,8 @@
 import { auth } from '@/lib/firebase/client';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { motion } from 'framer-motion';
-import { Zap, Mail, Lock, ArrowRight } from 'lucide-react';
+import BrandLogo from '@/components/layout/BrandLogo';
+import { Mail, Lock, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
@@ -91,10 +92,7 @@ function LoginContent() {
               marginBottom: '1.5rem',
             }}
           >
-            <Zap size={32} color="#6366f1" fill="#6366f1" />
-            <span style={{ fontSize: '1.75rem', fontWeight: 'bold', color: 'white' }}>
-              Quiz<span style={{ color: '#06b6d4' }}>Pro</span>
-            </span>
+            <BrandLogo iconSize={32} textSize="1.75rem" />
           </Link>
           <h2 style={{ fontSize: '1.5rem', fontWeight: '700' }}>Welcome Back</h2>
           <p style={{ color: '#a5b4fc', marginTop: '0.5rem' }}>

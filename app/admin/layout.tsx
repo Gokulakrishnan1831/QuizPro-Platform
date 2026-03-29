@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import BrandLogo from '@/components/layout/BrandLogo';
 import {
   LayoutDashboard,
   Upload,
@@ -112,20 +113,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             marginBottom: '3rem',
           }}
         >
-          <Zap size={28} color="#6366f1" fill="#6366f1" />
-          <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'white' }}>
-            Quiz<span style={{ color: '#06b6d4' }}>Pro</span>{' '}
-            <span
-              style={{
-                fontSize: '0.7rem',
-                background: 'var(--primary)',
-                padding: '2px 6px',
-                borderRadius: '4px',
-                marginLeft: '4px',
-              }}
-            >
-              ADMIN
-            </span>
+          <BrandLogo iconSize={28} textSize="1.5rem" />
+          <span
+            style={{
+              fontSize: '0.7rem',
+              background: 'var(--primary)',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              marginLeft: '4px',
+              color: 'white',
+            }}
+          >
+            ADMIN
           </span>
         </Link>
 

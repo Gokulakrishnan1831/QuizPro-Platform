@@ -104,7 +104,7 @@ export default function AdminLoginPage() {
                                 type="email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
-                                placeholder="admin@quizpro.com"
+                                placeholder="admin@preplytics.com"
                                 required
                                 style={{
                                     width: '100%',

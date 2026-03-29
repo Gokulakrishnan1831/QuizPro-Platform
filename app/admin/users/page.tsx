@@ -277,7 +277,7 @@ export default function AdminUsersPage() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `quizpro-users-${Date.now()}.csv`;
+        a.download = `preplytics-users-${Date.now()}.csv`;
         a.click();
         URL.revokeObjectURL(url);
     };
