@@ -29,12 +29,21 @@ export async function GET() {
     const enrichedAttempts = await Promise.all(
       recentAttempts.map(async (a) => {
         const quiz = await getQuizById(a.quizId);
+        let dateStr = a.completedAt as any;
+        if (dateStr?.toDate) {
+          dateStr = dateStr.toDate().toISOString();
+        } else if (dateStr instanceof Date) {
+          dateStr = dateStr.toISOString();
+        } else if (typeof dateStr === 'object' && '_seconds' in dateStr) {
+           dateStr = new Date(dateStr._seconds * 1000).toISOString();
+        }
+
         return {
           id: a.id,
           score: Number(a.score),
           timeTaken: a.timeTaken,
           persona: quiz?.persona ?? 'FRESHER',
-          completedAt: a.completedAt,
+          completedAt: dateStr,
         };
       }),
     );
@@ -47,6 +56,9 @@ export async function GET() {
         persona: user.persona,
         subscriptionTier: user.subscriptionTier,
         quizzesRemaining: user.quizzesRemaining,
+        profilePhotoUrl: (user as any).profilePhotoUrl ?? null,
+        headline: (user as any).headline ?? null,
+        profileCompletionPct: (user as any).profileCompletionPct ?? 0,
       },
       stats: {
         totalAttempted,
@@ -54,13 +66,20 @@ export async function GET() {
         accuracy: overallAccuracy,
         quizzesTaken: recentAttempts.length,
       },
-      skillProgress: progress.map((p) => ({
-        skill: p.skill,
-        totalAttempted: p.totalAttempted,
-        totalCorrect: p.totalCorrect,
-        accuracy: Number(p.accuracy),
-        lastPracticed: p.lastPracticed,
-      })),
+      skillProgress: progress.map((p) => {
+        let lp = p.lastPracticed as any;
+        if (lp?.toDate) lp = lp.toDate().toISOString();
+        else if (lp instanceof Date) lp = lp.toISOString();
+        else if (typeof lp === 'object' && lp && '_seconds' in lp) lp = new Date(lp._seconds * 1000).toISOString();
+
+        return {
+          skill: p.skill,
+          totalAttempted: p.totalAttempted,
+          totalCorrect: p.totalCorrect,
+          accuracy: Math.round(Number(p.accuracy)),
+          lastPracticed: lp,
+        };
+      }),
       recentAttempts: enrichedAttempts,
     });
   } catch (error: any) {

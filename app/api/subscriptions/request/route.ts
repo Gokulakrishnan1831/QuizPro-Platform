@@ -3,12 +3,7 @@ import { getAuthenticatedUser } from '@/lib/auth';
 import { createPaymentRequest } from '@/lib/firebase/db';
 import { db } from '@/lib/firebase/admin';
 import { COLLECTIONS } from '@/lib/firebase/collections';
-
-const PLAN_CONFIG: Record<string, { price: number; name: string; quizzes: number }> = {
-    BASIC: { price: 99, name: 'Basic', quizzes: 3 },
-    PRO: { price: 299, name: 'Pro', quizzes: 10 },
-    ELITE: { price: 499, name: 'Elite', quizzes: 20 },
-};
+import { PLAN_CONFIG_SERVER as PLAN_CONFIG } from '@/lib/plans';
 
 /**
  * POST /api/subscriptions/request

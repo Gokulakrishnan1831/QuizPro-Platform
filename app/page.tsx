@@ -7,17 +7,45 @@ import FeaturesGrid from '@/components/home/FeaturesGrid';
 import Testimonials from '@/components/home/Testimonials';
 import CTASection from '@/components/home/CTASection';
 import Footer from '@/components/home/Footer';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { auth } from '@/lib/firebase/client';
+import { onAuthStateChanged, type User } from 'firebase/auth';
 
 export default function Home() {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setUser(firebaseUser);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace('/dashboard');
+    }
+  }, [user, loading, router]);
+
+  if (loading || user) {
+    return <div style={{ minHeight: '100vh', background: 'var(--bg-start)' }} />;
+  }
+
+  const isLoggedIn = !!user;
+
   return (
     <div style={{ minHeight: '100vh', paddingTop: '80px' }}>
       <Navbar />
 
-      <HeroSection />
+      <HeroSection isLoggedIn={isLoggedIn} isLoading={loading} />
       <PersonaSelector />
       <FeaturesGrid />
       <Testimonials />
-      <CTASection />
+      <CTASection isLoggedIn={isLoggedIn} isLoading={loading} />
       <Footer />
 
       {/* Glassmorphism background orbs */}

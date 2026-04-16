@@ -82,6 +82,7 @@ export function buildQuizPrompt(params: {
   const questionsPerSkill = Math.ceil(numQuestions / skills.length);
   const difficulty = difficultyRange(profileType, experienceYears);
   const includesPowerBI = skills.includes('POWERBI');
+  const randomSeed = Math.random().toString(36).substring(2, 10);
 
   return `You are an expert Data Analyst interview coach.
 Generate a ${numQuestions}-question quiz.
@@ -98,6 +99,10 @@ Difficulty range: ${difficulty}
 ${typeof difficultyFloor === 'number' && typeof difficultyCeiling === 'number'
     ? `Hard constraint: Every question difficulty must be between ${difficultyFloor} and ${difficultyCeiling}.`
     : ''}
+
+---- DYNAMIC VARIANCE SEED ----
+Unique Execution Seed: ${randomSeed}
+Mandatory: Use this seed to mathematically randomize your sub-topic selection. Focus on highly specific, distinct niches of the requested tools rather than generic questions to ensure 100% uniqueness from other quizzes.
 
 ${quizGoal === 'INTERVIEW_PREP' && jdCompany ? interviewPrepContext(jdCompany, jdText) : ''}
 ${quizGoal === 'INTERVIEW_PREP' && interviewGroundingContext ? `\n${interviewGroundingContext}\n` : ''}
@@ -178,6 +183,7 @@ export function buildMixedQuizPrompt(params: {
   const handsOnSkills = skills.filter((s) => s !== 'POWERBI');
   const hasHandsOn = handsOnSkills.length > 0;
   const includesPowerBI = skills.includes('POWERBI');
+  const randomSeed = Math.random().toString(36).substring(2, 10);
 
   return `You are an expert Data Analyst interview coach.
 Generate a ${numQuestions}-question quiz with MCQ and hands-on questions where applicable.
@@ -195,6 +201,10 @@ ${typeof difficultyFloor === 'number' && typeof difficultyCeiling === 'number'
     : ''}
 MCQ questions: ${mcqCount}
 ${hasHandsOn ? `Hands-on questions: ${handsOnCount} (from: ${handsOnSkills.join(', ')})` : `All ${numQuestions} questions should be non-hands-on.`}
+
+---- DYNAMIC VARIANCE SEED ----
+Unique Execution Seed: ${randomSeed}
+Mandatory: Use this seed to mathematically randomize your sub-topic selection. Focus on highly specific, distinct niches of the requested tools rather than generic questions to ensure 100% uniqueness from other quizzes.
 
 ${quizGoal === 'INTERVIEW_PREP' && jdCompany ? interviewPrepContext(jdCompany, jdText) : ''}
 ${quizGoal === 'INTERVIEW_PREP' && interviewGroundingContext ? `\n${interviewGroundingContext}\n` : ''}
@@ -319,14 +329,93 @@ TOPICS:
 Keep tone encouraging but honest. No markdown headers.`;
 }
 
+export function buildScenarioQuestionPrompt(params: {
+  profileType: ProfileType;
+  experienceYears?: number;
+  skills: SkillType[];
+  quizGoal?: QuizGoalType;
+}): string {
+  const { profileType, experienceYears, skills, quizGoal } = params;
+  const difficulty = difficultyRange(profileType, experienceYears);
+
+  return `You are an expert Data Analytics interview coach.
+Generate exactly 2 scenario-based questions for a data analytics assessment.
+One must be type SCENARIO_MCQ and one must be type SCENARIO_SUBJECTIVE.
+
+---- CANDIDATE PROFILE ----
+Profile Type: ${profileType}
+${profileContext(profileType, experienceYears)}
+${experienceYears ? `Experience: ${experienceYears} years` : ''}
+
+---- SCENARIO CONTEXT ----
+The candidate has been practicing: ${skills.join(', ')}
+Quiz Goal: ${quizGoal ?? 'PRACTICE'}
+Difficulty range: ${difficulty}
+
+---- IMPORTANT ----
+These are REAL-WORLD scenario-based questions that test practical data analytics thinking.
+They should NOT be tied to a single tool (SQL/Excel/Power BI) but instead test:
+- Data cleaning and preprocessing decisions
+- Query/pipeline optimization strategies
+- Model evaluation and interpretation
+- Data integration and ETL challenges
+- Handling large-scale data
+- Statistical reasoning and metric selection
+- Communication of findings to stakeholders
+
+Example questions for reference (DO NOT reuse these, generate fresh ones):
+- "You find that 30% of your Customer Age data is missing. Do you delete the rows, impute the mean, or use another method? Why?"
+- "A SQL query that usually takes 10 seconds is now taking 5 minutes. What are the first three things you check?"
+- "You've built a model with 99% accuracy on a dataset where the target event only happens 1% of the time. Is this a good model?"
+- "You have two datasets with different date formats and mismatched IDs. How would you clean and join them?"
+- "How would you handle a dataset that is too large to load into your local environment's memory?"
+
+---- SCENARIO_MCQ FORMAT ----
+{
+  "type": "SCENARIO_MCQ",
+  "skill": "DATA_ANALYTICS",
+  "content": "The full scenario question text",
+  "scenario": "A 2-3 sentence context paragraph setting up the real-world situation",
+  "options": ["Option A", "Option B", "Option C", "Option D"],
+  "correctAnswer": "The exact correct option text",
+  "multipleCorrect": false,
+  "solution": "Detailed 3-4 sentence explanation of why this is the best answer",
+  "difficulty": <number 1-10>
+}
+
+---- SCENARIO_SUBJECTIVE FORMAT ----
+{
+  "type": "SCENARIO_SUBJECTIVE",
+  "skill": "DATA_ANALYTICS",
+  "content": "The full scenario question requiring a written answer",
+  "scenario": "A 2-3 sentence context paragraph setting up the real-world situation",
+  "maxWords": 200,
+  "rubric": "Key evaluation criteria: 1) Point one 2) Point two 3) Point three 4) Point four",
+  "sampleAnswer": "A model answer covering all rubric points in 100-150 words",
+  "difficulty": <number 1-10>
+}
+
+---- RULES ----
+1. Generate exactly 1 SCENARIO_MCQ and 1 SCENARIO_SUBJECTIVE.
+2. SCENARIO_MCQ must have exactly 4 plausible options and single correct answer.
+3. SCENARIO_SUBJECTIVE must include a rubric with 3-5 key evaluation points.
+4. SCENARIO_SUBJECTIVE sampleAnswer must be comprehensive but concise (100-150 words).
+5. Both questions must test practical, real-world data analytics skills.
+6. Questions should be challenging and thought-provoking, not trivial.
+7. The scenario field must provide realistic business/technical context.
+8. Return only a JSON array of 2 question objects. No markdown or commentary.`;
+}
+
 export function calculateQuizTimer(
   questionCount: number,
   includeHandsOn: boolean,
-  profileType: ProfileType
+  profileType: ProfileType,
+  scenarioCount: number = 0
 ): number {
   const minutesPerQ = includeHandsOn ? 2.5 : 1.5;
   const multiplier = profileType === 'FRESHER' ? 1.15 : 1.0;
-  const rawTime = questionCount * minutesPerQ * multiplier;
+  const scenarioTime = scenarioCount * 3;
+  const rawTime = (questionCount * minutesPerQ * multiplier) + scenarioTime;
   const rounded = Math.ceil(rawTime / 5) * 5;
-  return Math.max(5, Math.min(20, rounded));
+  return Math.max(5, Math.min(30, rounded));
 }

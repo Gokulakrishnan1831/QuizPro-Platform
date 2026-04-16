@@ -60,7 +60,7 @@ export async function createUser(id: string, data: Partial<UserDoc>): Promise<Us
         profileType: data.profileType ?? null,
         persona: data.persona ?? null,
         experienceYears: data.experienceYears ?? null,
-        resumeUrl: data.resumeUrl ?? null,
+
         educationDetails: data.educationDetails ?? null,
         toolStack: data.toolStack ?? null,
         quizGoal: data.quizGoal ?? null,
@@ -69,6 +69,16 @@ export async function createUser(id: string, data: Partial<UserDoc>): Promise<Us
         interviewDate: data.interviewDate ?? null,
         subscriptionTier: data.subscriptionTier ?? 'FREE',
         quizzesRemaining: data.quizzesRemaining ?? 1,
+        // Profile fields
+        phone: data.phone ?? null,
+        city: data.city ?? null,
+        headline: data.headline ?? null,
+        profilePhotoUrl: data.profilePhotoUrl ?? null,
+        workExperience: data.workExperience ?? null,
+        certifications: data.certifications ?? null,
+        linkedinUrl: data.linkedinUrl ?? null,
+        githubUrl: data.githubUrl ?? null,
+        profileCompletionPct: data.profileCompletionPct ?? 0,
         createdAt: data.createdAt ?? now(),
         updatedAt: now(),
     };

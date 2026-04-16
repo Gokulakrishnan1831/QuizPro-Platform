@@ -1,7 +1,9 @@
 import { getActiveAiModel, groqQuizCompletion } from '@/lib/ai/groq-client';
+import { extractAndRepairJson } from '@/lib/ai/json-repair';
 import {
   buildMixedQuizPrompt,
   buildQuizPrompt,
+  buildScenarioQuestionPrompt,
   calculateQuizTimer,
   type PersonaType,
   type ProfileType,
@@ -113,8 +115,7 @@ async function generateAiBatch(
   questionCount: number,
 ) {
   const raw = await groqQuizCompletion(prompt);
-  const cleaned = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-  const parsed = JSON.parse(cleaned);
+  const parsed = extractAndRepairJson(raw);
   if (!Array.isArray(parsed) || parsed.length === 0) return [];
   return normalizeQuestions(parsed, band, seenSignatures, questionCount);
 }
@@ -317,9 +318,36 @@ export async function generateQuizForUser(
   });
   questions = sanitizeFirestoreValue(questions) as any[];
 
-  const timerMins = calculateQuizTimer(questions.length, effectiveIncludeHandsOn, profileType);
-  const uniqueSkills = [...new Set(questions.map((q: any) => q.skill))];
-  const singleSkill = uniqueSkills.length === 1 ? uniqueSkills[0] : null;
+  // ── Generate 2 scenario questions (1 MCQ + 1 Subjective) ──────
+  let scenarioQuestions: any[] = [];
+  try {
+    const scenarioPrompt = buildScenarioQuestionPrompt({
+      profileType,
+      experienceYears: authUser.experienceYears ?? undefined,
+      skills: normalizedSkills,
+      quizGoal,
+    });
+    const scenarioRaw = await groqQuizCompletion(scenarioPrompt);
+    const scenarioParsed = extractAndRepairJson(scenarioRaw);
+    if (Array.isArray(scenarioParsed) && scenarioParsed.length > 0) {
+      scenarioQuestions = postProcessQuestions(scenarioParsed, {
+        difficultyFloor: band.floor,
+        difficultyCeiling: band.ceiling,
+      });
+      scenarioQuestions = sanitizeFirestoreValue(scenarioQuestions) as any[];
+    }
+  } catch (scenarioErr) {
+    console.error('Scenario question generation failed:', scenarioErr);
+    // Quiz proceeds without scenario questions — non-blocking
+  }
+
+  // Append scenario questions at the end
+  questions = [...questions, ...scenarioQuestions];
+
+  const scenarioCount = scenarioQuestions.length;
+  const timerMins = calculateQuizTimer(questions.length - scenarioCount, effectiveIncludeHandsOn, profileType, scenarioCount);
+  const regularSkills = [...new Set(questions.filter((q: any) => q.skill !== 'DATA_ANALYTICS').map((q: any) => q.skill))];
+  const singleSkill = regularSkills.length === 1 ? regularSkills[0] : null;
 
   const quizId = await createQuiz({
     persona,

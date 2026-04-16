@@ -53,6 +53,18 @@ export async function POST(request: Request) {
         correctAnswer: question.solution ?? '',
         explanation: question.solution,
       });
+    } else if (qType === 'SCENARIO_SUBJECTIVE') {
+      // Subjective is graded at quiz completion by LLM, not per-question
+      return NextResponse.json({
+        isCorrect: null,
+        correctAnswer: question.sampleAnswer ?? '',
+        explanation: question.rubric ?? '',
+      });
+    } else if (qType === 'SCENARIO_MCQ') {
+      // Scenario MCQ — graded like regular MCQ
+      isCorrect =
+        String(userAnswer).trim().toLowerCase() ===
+        String(question.correctAnswer).trim().toLowerCase();
     } else {
       isCorrect =
         String(userAnswer).trim().toLowerCase() ===

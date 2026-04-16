@@ -85,7 +85,7 @@ export default function Testimonials() {
                 >
                     Loved by <span className="text-gradient">Analysts</span>
                 </h2>
-                <p style={{ color: '#a5b4fc', fontSize: '1.1rem' }}>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem' }}>
                     See what our community has to say
                 </p>
             </motion.div>
@@ -125,14 +125,14 @@ export default function Testimonials() {
                                     key={s}
                                     size={16}
                                     fill={s < t.stars ? '#f59e0b' : 'transparent'}
-                                    color={s < t.stars ? '#f59e0b' : '#3f3f46'}
+                                    color={s < t.stars ? '#f59e0b' : 'var(--text-muted)'}
                                 />
                             ))}
                         </div>
 
                         <p
                             style={{
-                                color: '#cbd5e1',
+                                color: 'var(--text-secondary)',
                                 fontSize: '0.95rem',
                                 lineHeight: '1.6',
                                 marginBottom: '1.5rem',
@@ -161,7 +161,7 @@ export default function Testimonials() {
                             </div>
                             <div>
                                 <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{t.name}</div>
-                                <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>{t.role}</div>
+                                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t.role}</div>
                             </div>
                         </div>
                     </motion.div>

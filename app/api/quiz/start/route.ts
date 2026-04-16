@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth';
 import { generateQuizForUser } from '@/lib/quiz/generation-service';
 
+export const maxDuration = 60; // Allow 60 seconds on Vercel Pro/Hobby fallback
+
+
 /**
  * POST /api/quiz/start
  *

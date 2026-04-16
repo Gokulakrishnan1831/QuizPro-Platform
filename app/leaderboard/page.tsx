@@ -12,7 +12,10 @@ import {
     RefreshCw,
     Loader2,
     Sparkles,
+    Lock,
 } from 'lucide-react';
+import { usePlan } from '@/components/upgrade/PlanProvider';
+import { isFeatureLocked } from '@/lib/plans';
 
 /* ─── Types ──────────────────────────────────────────────────── */
 
@@ -56,7 +59,7 @@ function getRankIcon(rank: number) {
         <span
             style={{
                 fontSize: '0.85rem',
-                color: '#6b7280',
+                color: 'var(--text-muted)',
                 fontWeight: '600',
                 width: '22px',
                 textAlign: 'center',
@@ -89,6 +92,8 @@ export default function LeaderboardPage() {
     const [refreshing, setRefreshing] = useState(false);
     const [status, setStatus] = useState<'ok' | 'unavailable'>('ok');
     const [message, setMessage] = useState<string>('');
+    const { currentTier, openUpgradeDialog } = usePlan();
+    const leaderboardLocked = isFeatureLocked(currentTier, 'BASIC');
 
     const fetchLeaderboard = useCallback(
         async (skill: string, profileType: string, isRefresh = false) => {
@@ -164,7 +169,7 @@ export default function LeaderboardPage() {
                     >
                         <span className="text-gradient">Leaderboard</span>
                     </h1>
-                    <p style={{ color: '#a5b4fc', fontSize: '1.05rem', lineHeight: '1.6' }}>
+                    <p style={{ color: 'var(--text-accent)', fontSize: '1.05rem', lineHeight: '1.6' }}>
                         Compete with peers at your level — segmented by skill & experience
                     </p>
                 </motion.div>
@@ -194,7 +199,7 @@ export default function LeaderboardPage() {
                                     <div style={{ fontWeight: '700', fontSize: '0.95rem' }}>
                                         Your Current Rank
                                     </div>
-                                    <div style={{ color: '#a5b4fc', fontSize: '0.82rem' }}>
+                                    <div style={{ color: 'var(--text-accent)', fontSize: '0.82rem' }}>
                                         {currentUserEntry.quizzes} quizzes completed
                                     </div>
                                 </div>
@@ -242,7 +247,7 @@ export default function LeaderboardPage() {
                                     background: profileFilter === pf.id
                                         ? 'rgba(99,102,241,0.12)'
                                         : 'rgba(255,255,255,0.03)',
-                                    color: profileFilter === pf.id ? 'white' : '#6b7280',
+                                    color: profileFilter === pf.id ? 'var(--text-primary)' : 'var(--text-muted)',
                                     cursor: 'pointer',
                                     fontWeight: '600',
                                     fontSize: '0.85rem',
@@ -276,7 +281,7 @@ export default function LeaderboardPage() {
                                         activeFilter === filter.id
                                             ? 'rgba(99,102,241,0.12)'
                                             : 'rgba(255,255,255,0.03)',
-                                    color: activeFilter === filter.id ? 'white' : '#6b7280',
+                                    color: activeFilter === filter.id ? 'var(--text-primary)' : 'var(--text-muted)',
                                     cursor: 'pointer',
                                     fontWeight: '600',
                                     fontSize: '0.85rem',
@@ -298,9 +303,9 @@ export default function LeaderboardPage() {
                             style={{
                                 padding: '8px 14px',
                                 borderRadius: '20px',
-                                border: '1px solid rgba(255,255,255,0.08)',
-                                background: 'rgba(255,255,255,0.03)',
-                                color: '#6b7280',
+                                border: '1px solid var(--border-color)',
+                                background: 'var(--subtle-bg)',
+                                color: 'var(--text-muted)',
                                 cursor: refreshing ? 'wait' : 'pointer',
                                 fontWeight: '600',
                                 fontSize: '0.85rem',
@@ -328,17 +333,75 @@ export default function LeaderboardPage() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.2 }}
                     className="glass-card"
-                    style={{ overflow: 'hidden' }}
+                    style={{ overflow: 'hidden', position: 'relative' }}
                 >
+                    {/* ── FREE user lock overlay ── */}
+                    {leaderboardLocked && (
+                        <div
+                            style={{
+                                position: 'absolute',
+                                inset: 0,
+                                zIndex: 10,
+                                backdropFilter: 'blur(8px)',
+                                WebkitBackdropFilter: 'blur(8px)',
+                                background: 'rgba(5,5,20,0.6)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '14px',
+                                borderRadius: 'inherit',
+                            }}
+                        >
+                            <div
+                                style={{
+                                    width: '60px',
+                                    height: '60px',
+                                    borderRadius: '50%',
+                                    background: 'rgba(6,182,212,0.15)',
+                                    border: '2px solid #06b6d4',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                }}
+                            >
+                                <Lock size={26} color="#06b6d4" />
+                            </div>
+                            <div style={{ textAlign: 'center' }}>
+                                <div style={{ fontWeight: '800', fontSize: '1.1rem', marginBottom: '6px' }}>
+                                    Leaderboard is locked
+                                </div>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', maxWidth: '280px', lineHeight: 1.5 }}>
+                                    Upgrade to <strong style={{ color: '#06b6d4' }}>Basic</strong> or higher to compete on the leaderboard
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => openUpgradeDialog('Leaderboard Access')}
+                                style={{
+                                    padding: '10px 24px',
+                                    borderRadius: '12px',
+                                    background: 'linear-gradient(135deg, #06b6d4, #06b6d4cc)',
+                                    border: 'none',
+                                    color: '#fff',
+                                    fontWeight: '700',
+                                    fontSize: '0.9rem',
+                                    cursor: 'pointer',
+                                    boxShadow: '0 4px 16px rgba(6,182,212,0.3)',
+                                }}
+                            >
+                                Upgrade Now
+                            </button>
+                        </div>
+                    )}
                     {/* Header */}
                     <div
                         style={{
                             display: 'grid',
                             gridTemplateColumns: '60px 1fr 110px 90px 110px',
                             padding: '14px 20px',
-                            borderBottom: '1px solid rgba(255,255,255,0.05)',
+                            borderBottom: '1px solid var(--border-color)',
                             fontSize: '0.72rem',
-                            color: '#6b7280',
+                            color: 'var(--text-muted)',
                             textTransform: 'uppercase',
                             letterSpacing: '1.2px',
                             fontWeight: '600',
@@ -356,7 +419,7 @@ export default function LeaderboardPage() {
                             style={{
                                 padding: '5rem',
                                 textAlign: 'center',
-                                color: '#6b7280',
+                                color: 'var(--text-muted)',
                                 display: 'flex',
                                 flexDirection: 'column',
                                 alignItems: 'center',
@@ -375,7 +438,7 @@ export default function LeaderboardPage() {
                             style={{
                                 padding: '5rem 2rem',
                                 textAlign: 'center',
-                                color: '#6b7280',
+                                color: 'var(--text-muted)',
                             }}
                         >
                             <Trophy size={40} color="#374151" style={{ margin: '0 auto 1rem' }} />
@@ -467,7 +530,7 @@ export default function LeaderboardPage() {
                                     style={{
                                         textAlign: 'center',
                                         fontSize: '0.85rem',
-                                        color: '#a5b4fc',
+                                        color: 'var(--text-accent)',
                                         fontWeight: '600',
                                     }}
                                 >

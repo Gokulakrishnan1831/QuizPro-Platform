@@ -26,6 +26,8 @@ export const COLLECTIONS = {
     INTERVIEW_QUESTION_BANK: 'interviewQuestionBank',
     QUIZ_GENERATION_TRACES: 'quizGenerationTraces',
     USER_QUESTION_HISTORY: 'userQuestionHistory',
+    FEEDBACKS: 'feedbacks', // new collection for private feedback threads
+    NOTIFICATIONS: 'notifications',
 } as const;
 
 /* ─── Enums (mirrors Prisma enums) ────────────────────────────── */
@@ -33,20 +35,45 @@ export const COLLECTIONS = {
 export type ProfileType = 'FRESHER' | 'EXPERIENCED';
 export type Persona = 'SWITCHER' | 'JOB_HOPPER' | 'FRESHER';
 export type SubscriptionTier = 'FREE' | 'BASIC' | 'PRO' | 'ELITE';
+
+// Feedback related types
+export type FeedbackStatus = 'open' | 'in_progress' | 'resolved';
+export type FeedbackCategory = string; // free‑text field as per requirement
 export type QuestionType = 'MCQ' | 'EXCEL_HANDS_ON' | 'SQL_HANDS_ON' | 'POWERBI_MCQ' | 'PYTHON_HANDS_ON';
 export type SkillType = 'EXCEL' | 'SQL' | 'POWERBI' | 'PYTHON';
 export type QuizGoal = 'PRACTICE' | 'INTERVIEW_PREP';
+
+/* ─── Profile Sub-Interfaces ──────────────────────────────────── */
+
+export interface WorkExperienceEntry {
+    company: string;
+    role: string;
+    startDate: string;        // "2022-01" (YYYY-MM)
+    endDate: string | null;   // null = "Present"
+    description?: string;
+}
+
+export interface CertificationEntry {
+    name: string;
+    issuer: string;           // "Google", "Coursera", etc.
+    issueDate?: string;       // "2023-06"
+    credentialUrl?: string;
+}
 
 /* ─── Document Interfaces ─────────────────────────────────────── */
 
 /** `users` collection — Doc ID = Firebase Auth UID */
 export interface UserDoc {
+    // existing fields ...
+    role?: 'admin' | 'user'; // role field used for admin identification
+    // (rest of the fields remain unchanged)
+
     email: string;
     name?: string | null;
     profileType?: ProfileType | null;
     persona?: Persona | null;
     experienceYears?: number | null;
-    resumeUrl?: string | null;
+
     educationDetails?: Record<string, any> | null;
     toolStack?: string[] | null;
     quizGoal?: QuizGoal | null;
@@ -55,6 +82,17 @@ export interface UserDoc {
     interviewDate?: Timestamp | null;
     subscriptionTier: SubscriptionTier;
     quizzesRemaining: number;
+    // ─── Profile fields (Naukri-style) ───
+    phone?: string | null;
+    city?: string | null;
+    headline?: string | null;
+    profilePhotoUrl?: string | null;
+    workExperience?: WorkExperienceEntry[] | null;
+    certifications?: CertificationEntry[] | null;
+    linkedinUrl?: string | null;
+    githubUrl?: string | null;
+    profileCompletionPct?: number | null;
+    // ─── Timestamps ───
     createdAt: Timestamp;
     updatedAt: Timestamp;
 }
@@ -92,6 +130,32 @@ export interface QuestionDoc {
     metadata?: Record<string, any> | null;
     createdAt: Timestamp;
 }
+
+/** `feedbacks` collection — Doc ID = auto‑generated */
+export interface FeedbackReply {
+    id: string;
+    authorId: string;
+    authorRole: 'user' | 'admin';
+    authorName: string;
+    body: string;
+    createdAt: Timestamp;
+}
+
+export interface FeedbackDoc {
+    id: string;
+    userId: string;
+    userEmail: string;
+    userName: string;
+    subject: string;
+    body: string;
+    category: FeedbackCategory;
+    status: FeedbackStatus;
+    isReadByAdmin: boolean;
+    replies: FeedbackReply[];
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
+}
+
 
 /** `quizAttempts` collection */
 export interface QuizAttemptDoc {
@@ -251,4 +315,16 @@ export interface UserQuestionHistoryDoc {
     questionSignature: string;
     questionType?: string | null;
     servedAt: Timestamp;
+}
+
+/** `notifications` collection */
+export interface NotificationDoc {
+    id: string;
+    userId: string;
+    title: string;
+    message: string;
+    type: 'feedback_reply' | 'system';
+    linkUrl: string;
+    isRead: boolean;
+    createdAt: Timestamp;
 }

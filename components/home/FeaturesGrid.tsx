@@ -81,7 +81,7 @@ export default function FeaturesGrid() {
                     Everything You Need to{' '}
                     <span className="text-gradient">Ace the Interview</span>
                 </h2>
-                <p style={{ color: '#a5b4fc', fontSize: '1.1rem', maxWidth: '600px', margin: '0 auto' }}>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', maxWidth: '600px', margin: '0 auto' }}>
                     Built by mentors who've helped 500+ analysts land jobs at top companies
                 </p>
             </motion.div>
@@ -132,7 +132,7 @@ export default function FeaturesGrid() {
                                 </h3>
                                 <p
                                     style={{
-                                        color: '#a5b4fc',
+                                        color: 'var(--text-secondary)',
                                         fontSize: '0.9rem',
                                         lineHeight: '1.5',
                                     }}

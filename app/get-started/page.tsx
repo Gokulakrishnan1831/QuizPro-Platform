@@ -1,7 +1,7 @@
 'use client';
 
-import { auth } from '@/lib/firebase/client';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { auth, googleProvider } from '@/lib/firebase/client';
+import { signInWithPopup } from 'firebase/auth';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   User,
@@ -12,16 +12,16 @@ import {
   CheckCircle2,
   Briefcase,
   GraduationCap,
-  Upload,
   Target,
   BookOpen,
   Calendar,
   Building2,
-  FileText,
   Check,
   Crown,
   Sparkles,
   Zap,
+  FileText,
+  Upload
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -39,20 +39,20 @@ const PLAN_OPTIONS = [
     name: 'Free',
     price: 0,
     quizzes: 1,
-    color: '#6b7280',
+    color: 'var(--text-muted)',
     icon: '🎯',
     description: 'Try before you commit',
-    features: ['1 AI-generated quiz', 'MCQ questions only', 'Basic score report'],
+    features: ['1 AI-generated assessment', 'MCQ questions only', 'Basic score report', 'Skill accuracy breakdown'],
   },
   {
     id: 'BASIC' as PlanTier,
     name: 'Basic',
-    price: 99,
+    price: 129,
     quizzes: 3,
     color: '#06b6d4',
     icon: '📚',
     description: 'Start your prep journey',
-    features: ['3 AI quizzes', 'Practice & Interview Prep', 'AI performance summary'],
+    features: ['3 AI-generated assessments', 'Practice & Interview Prep modes', 'Detailed Skill Gap Reports with focus on weak topics', 'AI performance summary', 'Segmented leaderboard access'],
   },
   {
     id: 'PRO' as PlanTier,
@@ -63,7 +63,7 @@ const PLAN_OPTIONS = [
     color: '#6366f1',
     icon: '🚀',
     description: 'Most popular — full experience',
-    features: ['10 AI quizzes', 'Hands-on SQL & Excel', 'JD-tailored prep', 'AI roadmap'],
+    features: ['10 AI-generated quizzes', 'Hands-on SQL & Excel questions', 'Company-specific interview prep (JD-tailored)', 'Improvement roadmap & focus topics', 'Per-skill leaderboard ranking', 'Priority support'],
   },
   {
     id: 'ELITE' as PlanTier,
@@ -73,7 +73,7 @@ const PLAN_OPTIONS = [
     color: '#f59e0b',
     icon: '👑',
     description: 'For serious job seekers',
-    features: ['20 AI quizzes', 'Everything in Pro', 'Resume analysis', 'Mentorship access'],
+    features: ['20 AI-generated quizzes', 'Everything in Pro', 'Company interview pattern analysis', 'Unlimited quiz retries', 'Resume analysis', 'Personalized mentorship access'],
   },
 ];
 
@@ -102,7 +102,7 @@ const SKILLS_LIST = [
 
 export default function SignupPage() {
   const router = useRouter();
-  const fileRef = useRef<HTMLInputElement>(null);
+
 
   const [step, setStep] = useState(1);
   const totalSteps = 6;
@@ -116,8 +116,7 @@ export default function SignupPage() {
     profileType: '' as ProfileType | '',
     // Step 3 — Profile details (conditional)
     experienceYears: 0,
-    resumeFile: null as File | null,
-    resumeFileName: '',
+
     educationDetails: {
       degree: '',
       university: '',
@@ -144,6 +143,7 @@ export default function SignupPage() {
   const [screenshot, setScreenshot] = useState<string | null>(null);
   const [submittingPayment, setSubmittingPayment] = useState(false);
   const [copied, setCopied] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const nextStep = () => { setError(''); setStep((s) => Math.min(s + 1, totalSteps)); };
   const prevStep = () => { setError(''); setStep((s) => Math.max(s - 1, 1)); };
@@ -165,20 +165,14 @@ export default function SignupPage() {
   };
 
   // ── Handle Signup ─────────────────────────────────────────────
-  const handleSignup = async () => {
+  const handleGoogleSignIn = async () => {
     setLoading(true);
     setError('');
-
     try {
-      // 1. Create Firebase auth user
-      const credential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
-      const firebaseUser = credential.user;
-
-      // Update display name
-      await updateProfile(firebaseUser, { displayName: formData.name });
-
-      // 2. Get ID token and create server session
-      const idToken = await firebaseUser.getIdToken();
+      const cred = await signInWithPopup(auth, googleProvider);
+      
+      const idToken = await cred.user.getIdToken();
+      // Create server session cookie immediately so server APIs work
       const sessionRes = await fetch('/api/auth/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -186,13 +180,45 @@ export default function SignupPage() {
       });
       if (!sessionRes.ok) throw new Error('Failed to create session');
 
-      // 3. Upload resume if present (placeholder)
-      let resumeUrl: string | null = null;
-      if (formData.resumeFile) {
-        resumeUrl = `/uploads/resumes/${firebaseUser.uid}_${formData.resumeFileName}`;
-      }
+      setFormData(prev => ({
+        ...prev,
+        name: cred.user.displayName || 'User',
+        email: cred.user.email || ''
+      }));
 
-      // 4. Sync profile to Firestore
+      // Check if they already have a full profile
+      const res = await fetch('/api/profile');
+      if (res.ok) {
+        const data = await res.json();
+        // If the profile object is reasonably complete, redirect to dashboard
+        if (data.profile && data.profile.quizzesRemaining !== undefined) {
+           router.push('/dashboard');
+           router.refresh();
+           return;
+        }
+      }
+      
+      // If we are here, new user or incomplete profile. Go to Step 2.
+      setStep(2);
+
+    } catch (err: any) {
+      if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
+        setError(err.message || 'Google Auth Failed');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignup = async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) throw new Error('Authentication lost. Please reload the page and try again.');
+
+      // Sync profile to Firestore
       const syncRes = await fetch('/api/auth/sync-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -203,7 +229,6 @@ export default function SignupPage() {
           persona: derivePersona(),
           profileType: formData.profileType || null,
           experienceYears: formData.profileType === 'EXPERIENCED' ? formData.experienceYears : 0,
-          resumeUrl,
           educationDetails: formData.profileType === 'FRESHER' ? formData.educationDetails : null,
           toolStack: formData.toolStack,
           quizGoal: formData.quizGoal || null,
@@ -242,18 +267,7 @@ export default function SignupPage() {
     } catch (err: any) {
       console.error('Signup error:', err);
       let msg = err.message || 'Signup failed';
-      if (msg.includes('email-already-in-use')) {
-        msg = 'An account with this email already exists. Please log in.';
-      } else if (msg.includes('weak-password')) {
-        msg = 'Password must be at least 6 characters.';
-      } else if (msg.includes('invalid-email')) {
-        msg = 'Please enter a valid email address.';
-      }
       setError(msg);
-      const lower = msg.toLowerCase();
-      if (lower.includes('email') || lower.includes('password')) {
-        setStep(1);
-      }
     } finally {
       setLoading(false);
     }
@@ -333,7 +347,7 @@ export default function SignupPage() {
                   style={{
                     height: '4px',
                     borderRadius: '2px',
-                    background: i + 1 <= step ? 'var(--primary)' : 'rgba(255,255,255,0.1)',
+                    background: i + 1 <= step ? 'var(--primary)' : 'var(--divider)',
                     transition: 'background 0.3s ease',
                     marginBottom: '6px',
                   }}
@@ -341,7 +355,7 @@ export default function SignupPage() {
                 <span
                   style={{
                     fontSize: '0.6rem',
-                    color: i + 1 <= step ? '#a5b4fc' : '#4b5563',
+                    color: i + 1 <= step ? 'var(--text-accent)' : 'var(--text-muted)',
                     textTransform: 'uppercase',
                     letterSpacing: '0.5px',
                     fontWeight: i + 1 === step ? '700' : '500',
@@ -366,7 +380,7 @@ export default function SignupPage() {
               <h2 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.5rem' }}>
                 Create Account
               </h2>
-              <p style={{ color: '#a5b4fc', marginBottom: '2rem' }}>
+              <p style={{ color: 'var(--text-accent)', marginBottom: '2rem' }}>
                 Let&apos;s get started with your basic info
               </p>
 
@@ -387,62 +401,39 @@ export default function SignupPage() {
               )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                <div style={{ position: 'relative' }}>
-                  <User
-                    style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#6b7280' }}
-                    size={20}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Full Name"
-                    className="input-field"
-                    style={{ paddingLeft: '44px' }}
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  />
-                </div>
-                <div style={{ position: 'relative' }}>
-                  <Mail
-                    style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#6b7280' }}
-                    size={20}
-                  />
-                  <input
-                    type="email"
-                    placeholder="Email Address"
-                    className="input-field"
-                    style={{ paddingLeft: '44px' }}
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  />
-                </div>
-                <div style={{ position: 'relative' }}>
-                  <Lock
-                    style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#6b7280' }}
-                    size={20}
-                  />
-                  <input
-                    type="password"
-                    placeholder="Password (min 6 characters)"
-                    className="input-field"
-                    style={{ paddingLeft: '44px' }}
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    minLength={6}
-                  />
-                </div>
                 <button
                   type="button"
-                  onClick={nextStep}
-                  disabled={!formData.name || !formData.email || formData.password.length < 6}
-                  className="btn-primary"
+                  onClick={handleGoogleSignIn}
+                  disabled={loading}
                   style={{
                     width: '100%',
+                    padding: '14px',
+                    borderRadius: '12px',
+                    background: 'white',
+                    color: '#333',
+                    fontWeight: '600',
+                    fontSize: '1.05rem',
+                    display: 'flex',
+                    alignItems: 'center',
                     justifyContent: 'center',
-                    marginTop: '1rem',
-                    opacity: !formData.name || !formData.email || formData.password.length < 6 ? 0.5 : 1,
+                    gap: '12px',
+                    border: '1px solid #e5e7eb',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    opacity: loading ? 0.7 : 1,
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                    transition: 'transform 0.1s'
                   }}
+                  onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.98)'}
+                  onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                  onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
                 >
-                  Next Step <ChevronRight size={20} />
+                  <svg width="24" height="24" viewBox="0 0 24 24">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                  </svg>
+                  {loading ? 'Continuing…' : 'Continue with Google'}
                 </button>
               </div>
             </motion.div>
@@ -459,7 +450,7 @@ export default function SignupPage() {
               <h2 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.5rem' }}>
                 Who Are You?
               </h2>
-              <p style={{ color: '#a5b4fc', marginBottom: '2rem' }}>
+              <p style={{ color: 'var(--text-accent)', marginBottom: '2rem' }}>
                 This helps us personalize your entire quiz experience
               </p>
 
@@ -480,11 +471,11 @@ export default function SignupPage() {
                         gap: '1rem',
                         padding: '1.25rem',
                         borderRadius: '14px',
-                        border: selected ? `2px solid ${p.color}` : '1px solid rgba(255,255,255,0.08)',
-                        background: selected ? `${p.color}15` : 'rgba(255,255,255,0.03)',
+                        border: selected ? `2px solid ${p.color}` : '1px solid var(--border-color)',
+                        background: selected ? `${p.color}15` : 'var(--card-bg)',
                         cursor: 'pointer',
                         textAlign: 'left',
-                        color: 'white',
+                        color: 'var(--text-primary)',
                         transition: 'all 0.2s',
                       }}
                     >
@@ -504,7 +495,7 @@ export default function SignupPage() {
                       </div>
                       <div>
                         <div style={{ fontWeight: '600', fontSize: '1.05rem' }}>{p.label}</div>
-                        <div style={{ color: '#94a3b8', fontSize: '0.82rem', marginTop: '2px' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: '2px' }}>
                           {p.desc}
                         </div>
                       </div>
@@ -528,9 +519,9 @@ export default function SignupPage() {
                     flex: 1,
                     padding: '12px',
                     borderRadius: '8px',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    border: '1px solid var(--border-color)',
                     background: 'transparent',
-                    color: 'white',
+                    color: 'var(--text-primary)',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
@@ -566,104 +557,27 @@ export default function SignupPage() {
                   <h2 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.5rem' }}>
                     Your Experience
                   </h2>
-                  <p style={{ color: '#a5b4fc', marginBottom: '2rem' }}>
+                  <p style={{ color: 'var(--text-accent)', marginBottom: '2rem' }}>
                     Tell us about your analytics background
                   </p>
 
                   {/* Experience Years */}
-                  <label style={{ color: '#a5b4fc', fontSize: '0.9rem', display: 'block', marginBottom: '0.5rem' }}>
+                  <label style={{ color: 'var(--text-accent)', fontSize: '0.9rem', display: 'block', marginBottom: '0.5rem' }}>
                     Years of Experience in Data Analytics
                   </label>
                   <select
                     className="input-field"
                     value={formData.experienceYears}
                     onChange={(e) => setFormData({ ...formData, experienceYears: Number(e.target.value) })}
-                    style={{ appearance: 'none', marginBottom: '1.5rem', backgroundColor: '#1a1a2e', color: '#e2e8f0' }}
+                    style={{ appearance: 'none', marginBottom: '1.5rem', backgroundColor: 'var(--card-bg)', color: 'var(--text-primary)' }}
                   >
-                    <option value={1} style={{ backgroundColor: '#1a1a2e', color: '#e2e8f0' }}>0 – 1 years</option>
-                    <option value={2} style={{ backgroundColor: '#1a1a2e', color: '#e2e8f0' }}>1 – 3 years</option>
-                    <option value={4} style={{ backgroundColor: '#1a1a2e', color: '#e2e8f0' }}>3 – 5 years</option>
-                    <option value={6} style={{ backgroundColor: '#1a1a2e', color: '#e2e8f0' }}>5 – 8 years</option>
-                    <option value={9} style={{ backgroundColor: '#1a1a2e', color: '#e2e8f0' }}>8+ years</option>
+                    <option value={1} style={{ backgroundColor: 'var(--card-bg)', color: 'var(--text-primary)' }}>0 – 1 years</option>
+                    <option value={2} style={{ backgroundColor: 'var(--card-bg)', color: 'var(--text-primary)' }}>1 – 3 years</option>
+                    <option value={4} style={{ backgroundColor: 'var(--card-bg)', color: 'var(--text-primary)' }}>3 – 5 years</option>
+                    <option value={6} style={{ backgroundColor: 'var(--card-bg)', color: 'var(--text-primary)' }}>5 – 8 years</option>
+                    <option value={9} style={{ backgroundColor: 'var(--card-bg)', color: 'var(--text-primary)' }}>8+ years</option>
                   </select>
 
-                  {/* Resume Upload */}
-                  <label style={{ color: '#a5b4fc', fontSize: '0.9rem', display: 'block', marginBottom: '0.5rem' }}>
-                    <Upload size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
-                    Upload Resume (optional)
-                  </label>
-                  <div
-                    onClick={() => fileRef.current?.click()}
-                    style={{
-                      border: '2px dashed rgba(99,102,241,0.25)',
-                      borderRadius: '12px',
-                      padding: '1.25rem',
-                      textAlign: 'center',
-                      cursor: 'pointer',
-                      marginBottom: '1.5rem',
-                      transition: 'border-color 0.2s',
-                    }}
-                  >
-                    {formData.resumeFileName ? (
-                      <div style={{ color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                        <FileText size={18} />
-                        {formData.resumeFileName}
-                      </div>
-                    ) : (
-                      <div style={{ color: '#6b7280', fontSize: '0.85rem' }}>
-                        <Upload size={22} color="#6366f1" style={{ display: 'block', margin: '0 auto 6px' }} />
-                        Click to upload your resume (PDF)
-                      </div>
-                    )}
-                  </div>
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept=".pdf,.doc,.docx"
-                    style={{ display: 'none' }}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        setFormData({ ...formData, resumeFile: file, resumeFileName: file.name });
-                      }
-                    }}
-                  />
-
-                  {/* Tool Stack Confirmation */}
-                  <label style={{ color: '#a5b4fc', fontSize: '0.9rem', display: 'block', marginBottom: '0.75rem' }}>
-                    <BookOpen size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
-                    Which tools do you want to practice?
-                  </label>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', marginBottom: '1.5rem' }}>
-                    {SKILLS_LIST.map((skill) => {
-                      const sel = formData.toolStack.includes(skill.id);
-                      return (
-                        <motion.button
-                          key={skill.id}
-                          type="button"
-                          whileHover={{ scale: 1.03 }}
-                          whileTap={{ scale: 0.97 }}
-                          onClick={() => toggleSkill(skill.id)}
-                          style={{
-                            padding: '12px',
-                            borderRadius: '10px',
-                            border: sel ? `2px solid ${skill.color}` : '1px solid rgba(255,255,255,0.08)',
-                            background: sel ? `${skill.color}15` : 'rgba(255,255,255,0.02)',
-                            color: 'white',
-                            cursor: 'pointer',
-                            fontWeight: '600',
-                            fontSize: '0.85rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '6px',
-                          }}
-                        >
-                          {skill.icon} {skill.name}
-                        </motion.button>
-                      );
-                    })}
-                  </div>
                 </>
               ) : (
                 /* ─── FRESHER DETAILS ─── */
@@ -671,13 +585,13 @@ export default function SignupPage() {
                   <h2 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.5rem' }}>
                     Education Details
                   </h2>
-                  <p style={{ color: '#a5b4fc', marginBottom: '2rem' }}>
+                  <p style={{ color: 'var(--text-accent)', marginBottom: '2rem' }}>
                     Help us understand your academic background
                   </p>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '1.5rem' }}>
                     <div>
-                      <label style={{ color: '#94a3b8', fontSize: '0.8rem', display: 'block', marginBottom: '6px' }}>
+                      <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', display: 'block', marginBottom: '6px' }}>
                         Degree / Program *
                       </label>
                       <input
@@ -693,7 +607,7 @@ export default function SignupPage() {
                       />
                     </div>
                     <div>
-                      <label style={{ color: '#94a3b8', fontSize: '0.8rem', display: 'block', marginBottom: '6px' }}>
+                      <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', display: 'block', marginBottom: '6px' }}>
                         University / College *
                       </label>
                       <input
@@ -709,7 +623,7 @@ export default function SignupPage() {
                       />
                     </div>
                     <div>
-                      <label style={{ color: '#94a3b8', fontSize: '0.8rem', display: 'block', marginBottom: '6px' }}>
+                      <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', display: 'block', marginBottom: '6px' }}>
                         Graduation Year *
                       </label>
                       <select
@@ -721,16 +635,16 @@ export default function SignupPage() {
                             educationDetails: { ...formData.educationDetails, graduationYear: e.target.value },
                           })
                         }
-                        style={{ appearance: 'none', backgroundColor: '#1a1a2e', color: '#e2e8f0' }}
+                        style={{ appearance: 'none', backgroundColor: 'var(--card-bg)', color: 'var(--text-primary)' }}
                       >
-                        <option value="" style={{ backgroundColor: '#1a1a2e', color: '#e2e8f0' }}>Select year</option>
+                        <option value="" style={{ backgroundColor: 'var(--card-bg)', color: 'var(--text-primary)' }}>Select year</option>
                         {[2028, 2027, 2026, 2025, 2024, 2023, 2022, 2021, 2020].map((y) => (
-                          <option key={y} value={y} style={{ backgroundColor: '#1a1a2e', color: '#e2e8f0' }}>{y}</option>
+                          <option key={y} value={y} style={{ backgroundColor: 'var(--card-bg)', color: 'var(--text-primary)' }}>{y}</option>
                         ))}
                       </select>
                     </div>
                     <div>
-                      <label style={{ color: '#94a3b8', fontSize: '0.8rem', display: 'block', marginBottom: '6px' }}>
+                      <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', display: 'block', marginBottom: '6px' }}>
                         Relevant Projects / Certifications (optional)
                       </label>
                       <textarea
@@ -749,41 +663,6 @@ export default function SignupPage() {
                     </div>
                   </div>
 
-                  {/* Tool Stack for Fresher too */}
-                  <label style={{ color: '#a5b4fc', fontSize: '0.9rem', display: 'block', marginBottom: '0.75rem' }}>
-                    <BookOpen size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
-                    Which tools do you want to practice?
-                  </label>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', marginBottom: '1.5rem' }}>
-                    {SKILLS_LIST.map((skill) => {
-                      const sel = formData.toolStack.includes(skill.id);
-                      return (
-                        <motion.button
-                          key={skill.id}
-                          type="button"
-                          whileHover={{ scale: 1.03 }}
-                          whileTap={{ scale: 0.97 }}
-                          onClick={() => toggleSkill(skill.id)}
-                          style={{
-                            padding: '12px',
-                            borderRadius: '10px',
-                            border: sel ? `2px solid ${skill.color}` : '1px solid rgba(255,255,255,0.08)',
-                            background: sel ? `${skill.color}15` : 'rgba(255,255,255,0.02)',
-                            color: 'white',
-                            cursor: 'pointer',
-                            fontWeight: '600',
-                            fontSize: '0.85rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '6px',
-                          }}
-                        >
-                          {skill.icon} {skill.name}
-                        </motion.button>
-                      );
-                    })}
-                  </div>
                 </>
               )}
 
@@ -793,8 +672,8 @@ export default function SignupPage() {
                   onClick={prevStep}
                   style={{
                     flex: 1, padding: '12px', borderRadius: '8px',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    background: 'transparent', color: 'white', cursor: 'pointer',
+                    border: '1px solid var(--border-color)',
+                    background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                   }}
                 >
@@ -833,7 +712,7 @@ export default function SignupPage() {
               <h2 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.5rem' }}>
                 What&apos;s Your Goal?
               </h2>
-              <p style={{ color: '#a5b4fc', marginBottom: '2rem' }}>
+              <p style={{ color: 'var(--text-accent)', marginBottom: '2rem' }}>
                 This shapes the questions AI generates for you
               </p>
 
@@ -847,9 +726,9 @@ export default function SignupPage() {
                   style={{
                     display: 'flex', alignItems: 'center', gap: '1rem',
                     padding: '1.25rem', borderRadius: '14px',
-                    border: formData.quizGoal === 'PRACTICE' ? '2px solid #10b981' : '1px solid rgba(255,255,255,0.08)',
-                    background: formData.quizGoal === 'PRACTICE' ? 'rgba(16,185,129,0.08)' : 'rgba(255,255,255,0.03)',
-                    cursor: 'pointer', textAlign: 'left', color: 'white',
+                    border: formData.quizGoal === 'PRACTICE' ? '2px solid #10b981' : '1px solid var(--border-color)',
+                    background: formData.quizGoal === 'PRACTICE' ? 'rgba(16,185,129,0.08)' : 'var(--card-bg)',
+                    cursor: 'pointer', textAlign: 'left', color: 'var(--text-primary)',
                   }}
                 >
                   <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(16,185,129,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -857,7 +736,7 @@ export default function SignupPage() {
                   </div>
                   <div>
                     <div style={{ fontWeight: '600', fontSize: '1.05rem' }}>Practice & Learn</div>
-                    <div style={{ color: '#94a3b8', fontSize: '0.82rem', marginTop: '2px' }}>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: '2px' }}>
                       General skill-building based on your experience level
                     </div>
                   </div>
@@ -873,9 +752,9 @@ export default function SignupPage() {
                   style={{
                     display: 'flex', alignItems: 'center', gap: '1rem',
                     padding: '1.25rem', borderRadius: '14px',
-                    border: formData.quizGoal === 'INTERVIEW_PREP' ? '2px solid #f59e0b' : '1px solid rgba(255,255,255,0.08)',
-                    background: formData.quizGoal === 'INTERVIEW_PREP' ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.03)',
-                    cursor: 'pointer', textAlign: 'left', color: 'white',
+                    border: formData.quizGoal === 'INTERVIEW_PREP' ? '2px solid #f59e0b' : '1px solid var(--border-color)',
+                    background: formData.quizGoal === 'INTERVIEW_PREP' ? 'rgba(245,158,11,0.08)' : 'var(--card-bg)',
+                    cursor: 'pointer', textAlign: 'left', color: 'var(--text-primary)',
                   }}
                 >
                   <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(245,158,11,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -883,7 +762,7 @@ export default function SignupPage() {
                   </div>
                   <div>
                     <div style={{ fontWeight: '600', fontSize: '1.05rem' }}>Interview Preparation</div>
-                    <div style={{ color: '#94a3b8', fontSize: '0.82rem', marginTop: '2px' }}>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: '2px' }}>
                       Upload a company name & JD — AI generates role-specific questions
                     </div>
                   </div>
@@ -962,8 +841,8 @@ export default function SignupPage() {
                   onClick={prevStep}
                   style={{
                     flex: 1, padding: '12px', borderRadius: '8px',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    background: 'transparent', color: 'white', cursor: 'pointer',
+                    border: '1px solid var(--border-color)',
+                    background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                   }}
                 >
@@ -999,7 +878,7 @@ export default function SignupPage() {
               <h2 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.5rem' }}>
                 Choose Your Plan
               </h2>
-              <p style={{ color: '#a5b4fc', marginBottom: '1.5rem' }}>
+              <p style={{ color: 'var(--text-accent)', marginBottom: '1.5rem' }}>
                 Start free or unlock more quizzes. You can upgrade anytime.
               </p>
 
@@ -1017,11 +896,11 @@ export default function SignupPage() {
                         borderRadius: '14px',
                         border: isSelected
                           ? `2px solid ${plan.color}`
-                          : '1px solid rgba(255,255,255,0.08)',
+                          : '1px solid var(--border-color)',
                         background: isSelected
                           ? `${plan.color}10`
-                          : 'rgba(255,255,255,0.02)',
-                        color: 'white',
+                          : 'var(--card-bg)',
+                        color: 'var(--text-primary)',
                         cursor: 'pointer',
                         textAlign: 'left',
                         position: 'relative',
@@ -1035,8 +914,7 @@ export default function SignupPage() {
                             top: '-10px',
                             right: '12px',
                             background: `linear-gradient(135deg, ${plan.color}, #a855f7)`,
-                            color: 'white',
-                            fontSize: '0.65rem',
+                            color: 'white', fontSize: '0.65rem',
                             fontWeight: '700',
                             padding: '2px 10px',
                             borderRadius: '10px',
@@ -1065,7 +943,7 @@ export default function SignupPage() {
                           </div>
                           <p
                             style={{
-                              color: '#94a3b8',
+                              color: 'var(--text-muted)',
                               fontSize: '0.78rem',
                               margin: '2px 0 0',
                             }}
@@ -1080,7 +958,7 @@ export default function SignupPage() {
                             borderRadius: '50%',
                             border: isSelected
                               ? `2px solid ${plan.color}`
-                              : '2px solid rgba(255,255,255,0.15)',
+                              : '2px solid var(--border-color)',
                             background: isSelected ? plan.color : 'transparent',
                             display: 'flex',
                             alignItems: 'center',
@@ -1102,7 +980,7 @@ export default function SignupPage() {
                             gap: '6px',
                             marginTop: '0.75rem',
                             paddingTop: '0.75rem',
-                            borderTop: '1px solid rgba(255,255,255,0.06)',
+                            borderTop: '1px solid var(--border-color)',
                           }}
                         >
                           {plan.features.map((f, i) => (
@@ -1130,7 +1008,7 @@ export default function SignupPage() {
               {formData.selectedPlan !== 'FREE' && (
                 <p
                   style={{
-                    color: '#94a3b8',
+                    color: 'var(--text-muted)',
                     fontSize: '0.75rem',
                     marginTop: '0.75rem',
                     textAlign: 'center',
@@ -1146,8 +1024,8 @@ export default function SignupPage() {
                   onClick={prevStep}
                   style={{
                     flex: 1, padding: '12px', borderRadius: '8px',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    background: 'transparent', color: 'white', cursor: 'pointer',
+                    border: '1px solid var(--border-color)',
+                    background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                   }}
                 >
@@ -1178,7 +1056,7 @@ export default function SignupPage() {
                 <h2 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.5rem' }}>
                   Ready to Go!
                 </h2>
-                <p style={{ color: '#a5b4fc' }}>
+                <p style={{ color: 'var(--text-accent)' }}>
                   Review your profile and complete registration
                 </p>
               </div>
@@ -1188,42 +1066,40 @@ export default function SignupPage() {
                 style={{
                   padding: '1.25rem',
                   borderRadius: '14px',
-                  background: 'rgba(255,255,255,0.03)',
-                  border: '1px solid rgba(255,255,255,0.06)',
+                  background: 'var(--subtle-bg)',
+                  border: '1px solid var(--border-color)',
                   marginBottom: '1.5rem',
                   fontSize: '0.88rem',
                   lineHeight: '2',
                 }}
               >
-                <div style={{ color: '#94a3b8' }}>
-                  <strong style={{ color: 'white' }}>Name:</strong> {formData.name}
+                <div style={{ color: 'var(--text-muted)' }}>
+                  <strong style={{ color: 'var(--text-primary)' }}>Name:</strong> {formData.name}
                 </div>
-                <div style={{ color: '#94a3b8' }}>
-                  <strong style={{ color: 'white' }}>Profile:</strong>{' '}
+                <div style={{ color: 'var(--text-muted)' }}>
+                  <strong style={{ color: 'var(--text-primary)' }}>Profile:</strong>{' '}
                   {formData.profileType === 'EXPERIENCED' ? 'Experienced Professional' : 'Fresher / Student'}
                 </div>
                 {formData.profileType === 'EXPERIENCED' && (
-                  <div style={{ color: '#94a3b8' }}>
-                    <strong style={{ color: 'white' }}>Experience:</strong> {formData.experienceYears} years
+                  <div style={{ color: 'var(--text-muted)' }}>
+                    <strong style={{ color: 'var(--text-primary)' }}>Experience:</strong> {formData.experienceYears} years
                   </div>
                 )}
                 {formData.profileType === 'FRESHER' && formData.educationDetails.degree && (
-                  <div style={{ color: '#94a3b8' }}>
-                    <strong style={{ color: 'white' }}>Education:</strong>{' '}
+                  <div style={{ color: 'var(--text-muted)' }}>
+                    <strong style={{ color: 'var(--text-primary)' }}>Education:</strong>{' '}
                     {formData.educationDetails.degree}, {formData.educationDetails.university} ({formData.educationDetails.graduationYear})
                   </div>
                 )}
-                <div style={{ color: '#94a3b8' }}>
-                  <strong style={{ color: 'white' }}>Skills:</strong> {formData.toolStack.join(', ')}
-                </div>
-                <div style={{ color: '#94a3b8' }}>
-                  <strong style={{ color: 'white' }}>Goal:</strong>{' '}
+
+                <div style={{ color: 'var(--text-muted)' }}>
+                  <strong style={{ color: 'var(--text-primary)' }}>Goal:</strong>{' '}
                   {formData.quizGoal === 'INTERVIEW_PREP'
                     ? `Interview Prep — ${formData.upcomingCompany}`
                     : 'Practice & Learn'}
                 </div>
-                <div style={{ color: '#94a3b8' }}>
-                  <strong style={{ color: 'white' }}>Plan:</strong>{' '}
+                <div style={{ color: 'var(--text-muted)' }}>
+                  <strong style={{ color: 'var(--text-primary)' }}>Plan:</strong>{' '}
                   {(() => {
                     const plan = PLAN_OPTIONS.find(p => p.id === formData.selectedPlan);
                     return plan ? `${plan.icon} ${plan.name}${plan.price > 0 ? ` (₹${plan.price})` : ''}` : 'Free';
@@ -1249,8 +1125,8 @@ export default function SignupPage() {
                   onClick={prevStep}
                   style={{
                     flex: 1, padding: '12px', borderRadius: '8px',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    background: 'transparent', color: 'white', cursor: 'pointer',
+                    border: '1px solid var(--border-color)',
+                    background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                   }}
                 >
@@ -1282,7 +1158,7 @@ export default function SignupPage() {
                 <h2 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.5rem' }}>
                   Upgrade to {PLAN_OPTIONS.find(p => p.id === formData.selectedPlan)?.name}
                 </h2>
-                <p style={{ color: '#a5b4fc', marginBottom: '2rem' }}>
+                <p style={{ color: 'var(--text-accent)', marginBottom: '2rem' }}>
                   Complete your payment via UPI to activate your plan.
                 </p>
               </div>
@@ -1329,12 +1205,12 @@ export default function SignupPage() {
                     style={{
                       width: '220px',
                       height: '220px',
-                      background: 'rgba(255,255,255,0.05)',
+                      background: 'var(--subtle-bg)',
                       borderRadius: '16px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      color: '#a5b4fc',
+                      color: 'var(--text-accent)',
                       marginBottom: '1rem',
                     }}
                   >
@@ -1347,18 +1223,18 @@ export default function SignupPage() {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '10px',
-                    background: 'rgba(255,255,255,0.04)',
+                    background: 'var(--subtle-bg)',
                     padding: '10px 16px',
                     borderRadius: '12px',
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    border: '1px solid var(--border-color)',
                     width: '100%',
                   }}
                 >
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '2px' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '2px' }}>
                       Scan QR or Pay UPI ID
                     </div>
-                    <div style={{ fontWeight: '600', color: 'white' }}>
+                    <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
                       {upiData.upiId || 'preplytics@upi'}
                     </div>
                   </div>
@@ -1382,11 +1258,11 @@ export default function SignupPage() {
                   </button>
                 </div>
 
-                <div style={{ width: '100%', height: '1px', background: 'rgba(255,255,255,0.1)', margin: '1rem 0' }} />
+                <div style={{ width: '100%', height: '1px', background: 'var(--divider)', margin: '1rem 0' }} />
 
                 <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <div>
-                    <label style={{ fontSize: '0.8rem', color: '#a5b4fc', display: 'block', marginBottom: '8px' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-accent)', display: 'block', marginBottom: '8px' }}>
                       Step 1: 12-Digit Transaction ID *
                     </label>
                     <input
@@ -1398,19 +1274,19 @@ export default function SignupPage() {
                   </div>
 
                   <div>
-                    <label style={{ fontSize: '0.8rem', color: '#a5b4fc', display: 'block', marginBottom: '8px' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-accent)', display: 'block', marginBottom: '8px' }}>
                       Step 2: Upload Payment Screenshot (Optional but recommended)
                     </label>
                     <div
                       onClick={() => fileRef.current?.click()}
                       style={{
-                        border: '1px dashed rgba(255,255,255,0.2)',
+                        border: '1px dashed var(--border-color)',
                         borderRadius: '12px',
                         padding: screenshot ? '0px' : '20px',
                         textAlign: 'center',
                         cursor: 'pointer',
                         color: screenshot ? 'white' : '#6b7280',
-                        background: 'rgba(255,255,255,0.02)',
+                        background: 'var(--card-bg)',
                         transition: 'all 0.2s',
                         overflow: 'hidden',
                         position: 'relative',
@@ -1447,8 +1323,8 @@ export default function SignupPage() {
                   onClick={() => router.push('/dashboard')}
                   style={{
                     flex: 1, padding: '12px', borderRadius: '8px',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    background: 'transparent', color: 'white', cursor: 'pointer',
+                    border: '1px solid var(--border-color)',
+                    background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                   }}
                 >

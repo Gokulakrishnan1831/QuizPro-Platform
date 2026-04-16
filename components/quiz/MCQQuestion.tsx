@@ -107,7 +107,7 @@ export default function MCQQuestion({
                     fontWeight: '600',
                     lineHeight: '1.6',
                     marginBottom: '2rem',
-                    color: '#f1f5f9',
+                    color: 'var(--text-primary)',
                 }}
             >
                 {question.content}
@@ -122,12 +122,12 @@ export default function MCQQuestion({
                 }}
             >
                 {question.options?.map((option, i) => {
-                    let borderColor = 'rgba(255,255,255,0.08)';
-                    let bgColor = 'rgba(255,255,255,0.02)';
+                    let borderColor = 'var(--border-color)';
+                    let bgColor = 'var(--subtle-bg)';
 
                     if (currentSelection === option) {
                         borderColor = 'var(--primary)';
-                        bgColor = 'rgba(99, 102, 241, 0.05)';
+                        bgColor = 'var(--hover-bg)';
                     }
 
                     const optionLabel = String.fromCharCode(65 + i);
@@ -145,7 +145,7 @@ export default function MCQQuestion({
                                 border: '1px solid',
                                 borderColor,
                                 background: bgColor,
-                                color: 'white',
+                                color: 'var(--text-primary)',
                                 textAlign: 'left',
                                 fontSize: '0.95rem',
                                 lineHeight: '1.5',
@@ -161,13 +161,13 @@ export default function MCQQuestion({
                                     width: '28px',
                                     height: '28px',
                                     borderRadius: '8px',
-                                    background: 'rgba(255,255,255,0.05)',
+                                    background: 'var(--divider)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     fontSize: '0.8rem',
                                     fontWeight: '700',
-                                    color: '#6b7280',
+                                    color: 'var(--text-muted)',
                                     flexShrink: 0,
                                 }}
                             >

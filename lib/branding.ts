@@ -1,4 +1,5 @@
 export const BRAND_NAME = 'Preplytics';
+export const BRAND_SLOGAN = 'Know Your Weakness. Crack The Interview.';
 
 export const BRAND_TITLE = `${BRAND_NAME} - AI-Powered Data Analyst Interview Prep`;
 

@@ -53,7 +53,7 @@ export default function PracticePage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
-            style={{ color: '#a5b4fc', fontSize: '1.1rem' }}
+            style={{ color: 'var(--text-accent)', fontSize: '1.1rem' }}
           >
             Select a skill to start a targeted quiz session or mix them all
           </motion.p>
@@ -62,8 +62,9 @@ export default function PracticePage() {
         {/* Skill Cards */}
         <div
           style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
             gap: '1.5rem',
             marginBottom: '3rem',
           }}
@@ -77,8 +78,11 @@ export default function PracticePage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.1 }}
                 whileHover={{ scale: 1.02, y: -4 }}
-                className="glass-card"
+                className="glass-card max-[480px]:!flex-[1_1_100%] max-[480px]:!max-w-none"
                 style={{
+                  width: '100%',
+                  maxWidth: '480px',
+                  flex: '1 1 400px',
                   padding: '2rem',
                   cursor: 'pointer',
                   background: skill.gradient,
@@ -107,7 +111,7 @@ export default function PracticePage() {
                     </h3>
                     <p
                       style={{
-                        color: '#a5b4fc',
+                        color: 'var(--text-accent)',
                         fontSize: '0.9rem',
                         lineHeight: '1.5',
                         marginBottom: '1rem',
@@ -173,7 +177,7 @@ export default function PracticePage() {
           <h3 style={{ fontSize: '1.25rem', fontWeight: '700', marginBottom: '0.5rem' }}>
             🚀 Mixed Challenge
           </h3>
-          <p style={{ color: '#a5b4fc', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
+          <p style={{ color: 'var(--text-accent)', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
             Test across all skills in a single quiz — perfect for interview prep
           </p>
           <Link

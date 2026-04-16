@@ -1,10 +1,15 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, LayoutDashboard } from 'lucide-react';
 import Link from 'next/link';
 
-export default function CTASection() {
+interface CTASectionProps {
+    isLoggedIn?: boolean;
+    isLoading?: boolean;
+}
+
+export default function CTASection({ isLoggedIn = false, isLoading = false }: CTASectionProps) {
     return (
         <section
             style={{
@@ -54,7 +59,7 @@ export default function CTASection() {
                 </h2>
                 <p
                     style={{
-                        color: '#a5b4fc',
+                        color: 'var(--text-secondary)',
                         fontSize: '1.1rem',
                         lineHeight: '1.6',
                         marginBottom: '2rem',
@@ -74,35 +79,54 @@ export default function CTASection() {
                         justifyContent: 'center',
                         flexWrap: 'wrap',
                         position: 'relative',
+                        minHeight: '56px'
                     }}
                 >
-                    <Link
-                        href="/get-started"
-                        className="btn-primary"
-                        style={{
-                            fontSize: '1.1rem',
-                            padding: '16px 36px',
-                            textDecoration: 'none',
-                        }}
-                    >
-                        Get Started Free <ArrowRight size={20} />
-                    </Link>
-                    <Link
-                        href="/pricing"
-                        style={{
-                            padding: '16px 36px',
-                            borderRadius: '8px',
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            color: 'white',
-                            textDecoration: 'none',
-                            fontWeight: '600',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                        }}
-                    >
-                        View Pricing
-                    </Link>
+                    {isLoading ? (
+                        <div style={{ padding: '16px 36px', height: '56px', borderRadius: '8px', background: 'rgba(99,102,241,0.1)', minWidth: '200px' }} />
+                    ) : isLoggedIn ? (
+                        <Link
+                            href="/dashboard"
+                            className="btn-primary"
+                            style={{
+                                fontSize: '1.1rem',
+                                padding: '16px 36px',
+                                textDecoration: 'none',
+                            }}
+                        >
+                            Go to Dashboard <LayoutDashboard size={20} />
+                        </Link>
+                    ) : (
+                        <>
+                            <Link
+                                href="/get-started"
+                                className="btn-primary"
+                                style={{
+                                    fontSize: '1.1rem',
+                                    padding: '16px 36px',
+                                    textDecoration: 'none',
+                                }}
+                            >
+                                Get Started Free <ArrowRight size={20} />
+                            </Link>
+                            <Link
+                                href="/pricing"
+                                style={{
+                                    padding: '16px 36px',
+                                    borderRadius: '8px',
+                                    border: '1px solid var(--border-color)',
+                                    color: 'var(--text-primary)',
+                                    textDecoration: 'none',
+                                    fontWeight: '600',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                }}
+                            >
+                                View Pricing
+                            </Link>
+                        </>
+                    )}
                 </div>
             </motion.div>
         </section>

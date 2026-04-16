@@ -4,6 +4,7 @@ import { getQuizById, getUserById, createQuizAttempt, getUserProgress, upsertUse
 import { groqSummaryCompletion } from '@/lib/ai/groq-client';
 import { buildPerformanceSummaryPrompt } from '@/lib/ai/prompts';
 import { postProcessQuestions } from '@/lib/ai/post-process';
+import { gradeSubjectiveAnswer } from '@/lib/ai/scenario-grader';
 import {
   cellRefToCoords,
   coordsToCellRef,
@@ -371,6 +372,7 @@ export async function POST(request: Request) {
 
       const qType = (q.type ?? 'MCQ').toUpperCase();
       let isCorrect = false;
+      let scenarioGrading: any = null;
 
       if (qType === 'SQL_HANDS_ON') {
         try {
@@ -394,6 +396,35 @@ export async function POST(request: Request) {
         } catch {
           isCorrect = false;
         }
+      } else if (qType === 'SCENARIO_MCQ') {
+        // Scenario MCQ — graded like regular MCQ (string compare)
+        isCorrect =
+          String(ans.userAnswer).trim().toLowerCase() ===
+          String(q.correctAnswer).trim().toLowerCase();
+      } else if (qType === 'SCENARIO_SUBJECTIVE') {
+        // Scenario Subjective — graded by LLM, ≥50% accuracy = correct
+        try {
+          const gradingResult = await gradeSubjectiveAnswer({
+            question: q.content ?? '',
+            scenario: q.scenario ?? '',
+            rubric: q.rubric ?? '',
+            sampleAnswer: q.sampleAnswer ?? '',
+            userAnswer: String(ans.userAnswer ?? ''),
+            profileType: String(quizProfileType),
+          });
+          scenarioGrading = gradingResult;
+          isCorrect = gradingResult.accuracyScore >= 50;
+        } catch (gradingErr) {
+          console.error('Scenario subjective grading failed:', gradingErr);
+          // Fallback: conservative score, not correct
+          scenarioGrading = {
+            accuracyScore: 40,
+            feedback: 'We were unable to fully evaluate your answer. It has been scored conservatively.',
+            keyPointsCovered: [],
+            keyPointsMissed: [],
+          };
+          isCorrect = false;
+        }
       } else {
         isCorrect =
           String(ans.userAnswer).trim().toLowerCase() ===
@@ -407,24 +438,36 @@ export async function POST(request: Request) {
           ? q.solution ?? ''
           : qType === 'POWERBI_FILL_BLANK'
             ? (Array.isArray(q.acceptedAnswers) ? q.acceptedAnswers[0] : '')
-            : q.correctAnswer;
+            : qType === 'SCENARIO_SUBJECTIVE'
+              ? q.sampleAnswer ?? ''
+              : q.correctAnswer;
 
-      gradedAnswers.push({
+      const gradedEntry: any = {
         questionIndex: ans.questionIndex,
-        userAnswer: ans.userAnswer,
+        userAnswer: String(ans.userAnswer ?? ''),
         confidence: ans.confidence ?? null,
         isCorrect,
-        correctAnswer: displayCorrectAnswer,
-      });
+        correctAnswer: displayCorrectAnswer ?? '',
+      };
+
+      // Attach scenario grading metadata
+      if (scenarioGrading) {
+        gradedEntry.accuracyScore = scenarioGrading.accuracyScore;
+        gradedEntry.feedback = scenarioGrading.feedback;
+        gradedEntry.keyPointsCovered = scenarioGrading.keyPointsCovered;
+        gradedEntry.keyPointsMissed = scenarioGrading.keyPointsMissed;
+      }
+
+      gradedAnswers.push(gradedEntry);
 
       if (!isCorrect) {
         wrongAnswers.push({
           questionIndex: ans.questionIndex,
-          content: q.content,
-          userAnswer: ans.userAnswer,
-          correctAnswer: displayCorrectAnswer,
-          explanation: q.solution,
-          skill: q.skill,
+          content: q.content ?? null,
+          userAnswer: ans.userAnswer ?? null,
+          correctAnswer: displayCorrectAnswer ?? null,
+          explanation: q.solution ?? null,
+          skill: q.skill ?? null,
         });
       }
     }
@@ -489,7 +532,12 @@ export async function POST(request: Request) {
         ...(typeof tabSwitchCount === 'number' ? { tabSwitchCount } : {}),
         ...(typeof terminatedByProctor === 'boolean' ? { terminatedByProctor } : {}),
         ...(proctoringSummary && typeof proctoringSummary === 'object'
-          ? { proctoringSummary }
+          ? {
+              proctoringSummary: {
+                ...proctoringSummary,
+                terminationReason: proctoringSummary.terminationReason ?? null,
+              },
+            }
           : {}),
         ...(Array.isArray(proctoringEvents) ? { proctoringEvents } : {}),
       });
@@ -546,18 +594,29 @@ export async function POST(request: Request) {
       wrongCount: wrongAnswers.length,
       gradedAnswers: gradedAnswers.map((ga) => {
         const q = questions[ga.questionIndex];
+        const qType = (q?.type ?? 'MCQ').toUpperCase();
         return {
           ...ga,
           content: q?.content ?? '',
           correctAnswer:
-            ['SQL_HANDS_ON', 'EXCEL_HANDS_ON'].includes((q?.type ?? 'MCQ').toUpperCase())
+            ['SQL_HANDS_ON', 'EXCEL_HANDS_ON'].includes(qType)
               ? q?.solution ?? ''
-              : (q?.type ?? 'MCQ').toUpperCase() === 'POWERBI_FILL_BLANK'
+              : qType === 'POWERBI_FILL_BLANK'
                 ? (Array.isArray(q?.acceptedAnswers) ? q.acceptedAnswers[0] ?? '' : '')
-                : q?.correctAnswer ?? '',
+                : qType === 'SCENARIO_SUBJECTIVE'
+                  ? q?.sampleAnswer ?? ''
+                  : q?.correctAnswer ?? '',
           solution: q?.solution ?? '',
           skill: q?.skill ?? '',
           type: q?.type ?? 'MCQ',
+          scenario: q?.scenario ?? null,
+          // Scenario subjective fields (if present)
+          ...(ga.accuracyScore !== undefined ? {
+            accuracyScore: ga.accuracyScore,
+            feedback: ga.feedback,
+            keyPointsCovered: ga.keyPointsCovered,
+            keyPointsMissed: ga.keyPointsMissed,
+          } : {}),
         };
       }),
     });

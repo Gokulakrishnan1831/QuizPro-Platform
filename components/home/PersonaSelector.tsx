@@ -19,7 +19,7 @@ const PERSONAS = [
         title: 'Career Switcher',
         icon: ArrowLeftRight,
         color: '#6366f1',
-        gradient: 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(99,102,241,0.03))',
+        gradient: 'linear-gradient(135deg, rgba(99,102,241,0.1), rgba(99,102,241,0.02))',
         description:
             'Transitioning from another domain into data analytics? We will focus on core DA concepts and bridge your experience.',
         cta: "I'm switching careers",
@@ -30,7 +30,7 @@ const PERSONAS = [
         title: 'Job Hopper',
         icon: Briefcase,
         color: '#06b6d4',
-        gradient: 'linear-gradient(135deg, rgba(6,182,212,0.15), rgba(6,182,212,0.03))',
+        gradient: 'linear-gradient(135deg, rgba(6,182,212,0.1), rgba(6,182,212,0.02))',
         description:
             'Already working in DA and prepping for your next role? Paste the JD and we will tailor questions to that company.',
         cta: 'I have a target JD',
@@ -41,7 +41,7 @@ const PERSONAS = [
         title: 'Fresh Graduate',
         icon: GraduationCap,
         color: '#10b981',
-        gradient: 'linear-gradient(135deg, rgba(16,185,129,0.15), rgba(16,185,129,0.03))',
+        gradient: 'linear-gradient(135deg, rgba(16,185,129,0.1), rgba(16,185,129,0.02))',
         description:
             'New to the field? We will start from the fundamentals and build confidence with progressive difficulty.',
         cta: "I'm just starting out",
@@ -134,7 +134,7 @@ export default function PersonaSelector() {
                     >
                         Who Are <span className="text-gradient">You</span>?
                     </h2>
-                    <p style={{ color: '#a5b4fc', fontSize: '1.1rem' }}>
+                    <p style={{ color: 'var(--text-accent)', fontSize: '1.1rem' }}>
                         Choose your profile and we will customize your quiz experience
                     </p>
                 </motion.div>
@@ -162,7 +162,7 @@ export default function PersonaSelector() {
                                     padding: '2.5rem 2rem',
                                     cursor: 'pointer',
                                     background: p.gradient,
-                                    border: `1px solid ${p.color}30`,
+                                    border: `1px solid ${p.color}25`,
                                     textAlign: 'center',
                                     transition: 'box-shadow 0.3s',
                                 }}
@@ -186,13 +186,14 @@ export default function PersonaSelector() {
                                         fontSize: '1.4rem',
                                         fontWeight: '700',
                                         marginBottom: '0.75rem',
+                                        color: 'var(--text-primary)'
                                     }}
                                 >
                                     {p.title}
                                 </h3>
                                 <p
                                     style={{
-                                        color: '#a5b4fc',
+                                        color: 'var(--text-secondary)',
                                         fontSize: '0.95rem',
                                         lineHeight: '1.5',
                                         marginBottom: '1.5rem',
@@ -218,7 +219,6 @@ export default function PersonaSelector() {
                 </div>
             </section>
 
-            {/* ── Persona Modal ─────────────── */}
             <AnimatePresence>
                 {showModal && persona && (
                     <motion.div
@@ -230,7 +230,7 @@ export default function PersonaSelector() {
                             position: 'fixed',
                             inset: 0,
                             zIndex: 1000,
-                            background: 'rgba(0,0,0,0.6)',
+                            background: 'var(--overlay-bg)',
                             backdropFilter: 'blur(8px)',
                             display: 'flex',
                             alignItems: 'center',
@@ -251,6 +251,7 @@ export default function PersonaSelector() {
                                 position: 'relative',
                                 maxHeight: '90vh',
                                 overflowY: 'auto',
+                                background: 'var(--card-bg-solid)'
                             }}
                         >
                             <button
@@ -261,7 +262,7 @@ export default function PersonaSelector() {
                                     right: '1rem',
                                     background: 'none',
                                     border: 'none',
-                                    color: '#6b7280',
+                                    color: 'var(--text-muted)',
                                     cursor: 'pointer',
                                 }}
                             >
@@ -290,11 +291,12 @@ export default function PersonaSelector() {
                                                 fontSize: '1.5rem',
                                                 fontWeight: '700',
                                                 marginBottom: '0.5rem',
+                                                color: 'var(--text-primary)'
                                             }}
                                         >
                                             {persona.title}
                                         </h3>
-                                        <p style={{ color: '#a5b4fc', fontSize: '0.9rem' }}>
+                                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                                             {persona.description}
                                         </p>
                                     </div>
@@ -314,7 +316,7 @@ export default function PersonaSelector() {
                                                 borderRadius: '10px',
                                                 border: `1px solid ${persona.color}40`,
                                                 background: `${persona.color}10`,
-                                                color: 'white',
+                                                color: 'var(--text-primary)',
                                                 cursor: 'pointer',
                                                 fontWeight: '600',
                                                 display: 'flex',
@@ -355,7 +357,6 @@ export default function PersonaSelector() {
                                     </div>
                                 </>
                             ) : (
-                                /* ── Teaser Question ─────── */
                                 <>
                                     <div style={{ marginBottom: '1.5rem' }}>
                                         <span
@@ -364,7 +365,7 @@ export default function PersonaSelector() {
                                                 borderRadius: '20px',
                                                 background: 'rgba(99,102,241,0.1)',
                                                 fontSize: '0.75rem',
-                                                color: '#a5b4fc',
+                                                color: 'var(--text-accent)',
                                                 textTransform: 'uppercase',
                                                 letterSpacing: '1px',
                                             }}
@@ -379,6 +380,7 @@ export default function PersonaSelector() {
                                             fontWeight: '600',
                                             lineHeight: '1.5',
                                             marginBottom: '1.5rem',
+                                            color: 'var(--text-primary)'
                                         }}
                                     >
                                         {teaserQuestion.content}
@@ -393,19 +395,22 @@ export default function PersonaSelector() {
                                         }}
                                     >
                                         {teaserQuestion.options?.map((opt: string, i: number) => {
-                                            let borderColor = 'rgba(255,255,255,0.1)';
-                                            let bgColor = 'transparent';
+                                            let borderColor = 'var(--border-color)';
+                                            let bgColor = 'var(--input-bg)';
+                                            let textColor = 'var(--text-primary)';
 
                                             if (teaserResult) {
                                                 if (opt === teaserResult.correctAnswer) {
                                                     borderColor = 'var(--success)';
                                                     bgColor = 'rgba(16,185,129,0.1)';
+                                                    textColor = 'var(--success)';
                                                 } else if (
                                                     opt === teaserAnswer &&
                                                     !teaserResult.isCorrect
                                                 ) {
                                                     borderColor = 'var(--error)';
                                                     bgColor = 'rgba(239,68,68,0.1)';
+                                                    textColor = 'var(--error)';
                                                 }
                                             }
 
@@ -420,7 +425,7 @@ export default function PersonaSelector() {
                                                         border: '1px solid',
                                                         borderColor,
                                                         background: bgColor,
-                                                        color: 'white',
+                                                        color: textColor,
                                                         textAlign: 'left',
                                                         cursor: teaserAnswer ? 'default' : 'pointer',
                                                         fontSize: '0.95rem',
@@ -442,8 +447,8 @@ export default function PersonaSelector() {
                                                 style={{
                                                     padding: '1rem',
                                                     borderRadius: '10px',
-                                                    background: 'rgba(255,255,255,0.03)',
-                                                    border: '1px solid rgba(255,255,255,0.05)',
+                                                    background: 'var(--subtle-bg)',
+                                                    border: '1px solid var(--border-color)',
                                                     marginBottom: '1.25rem',
                                                 }}
                                             >
@@ -461,7 +466,7 @@ export default function PersonaSelector() {
                                                 <p
                                                     style={{
                                                         fontSize: '0.9rem',
-                                                        color: '#cbd5e1',
+                                                        color: 'var(--text-secondary)',
                                                         lineHeight: '1.5',
                                                     }}
                                                 >

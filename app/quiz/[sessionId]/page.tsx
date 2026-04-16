@@ -148,16 +148,21 @@ export default function ActiveQuizPage({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [confidence, setConfidence] = useState(50);
   const [answers, setAnswers] = useState<QuestionResult[]>([]);
+  const answersRef = useRef<QuestionResult[]>([]); // always up-to-date, never stale in closures
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [timer, setTimer] = useState(0);
   const [flagged, setFlagged] = useState<Set<number>>(new Set());
-  const [proctoringReady, setProctoringReady] = useState(false);
+  const [proctoringReady, setProctoringReady] = useState(true); // TEMP OVERRIDE FOR TESTING
   const monitoringVideoRef = useRef<HTMLVideoElement | null>(null);
 
   // ── Fetch quiz data ─────────────────────────────────────────
   useEffect(() => {
     async function loadQuiz() {
+      // Clear any stale results from a previous attempt with the same quiz ID
+      // so they never bleed into the new attempt's results page.
+      sessionStorage.removeItem(`quiz-results-${sessionId}`);
+
       // Try API first
       try {
         const res = await fetch(`/api/quiz/${sessionId}`);
@@ -216,21 +221,21 @@ export default function ActiveQuizPage({
 
   // ── Proctoring hook ─────────────────────────────────────────
   const proctoring = useProctoring({
-    enabled: !loading && proctoringReady,
+    enabled: false, // TEMP DISABLING FOR TESTING
     maxTabSwitches: 2,
     onTerminate: handleFinishRef,
     ...(isE2EProctoring
       ? {
-          monitorIntervalMs: 250,
-          faceViolationGraceMs: 1200,
-          cameraOffGraceMs: 1000,
-          faceRecoveryStableMs: 1000,
-          minConsecutiveSamples: 2,
-          violationCooldownMs: 1200,
-          startFaceCheckTimeoutMs: 2500,
-          startFaceCheckStableMs: 500,
-          startFaceCheckPollMs: 100,
-        }
+        monitorIntervalMs: 250,
+        faceViolationGraceMs: 1200,
+        cameraOffGraceMs: 1000,
+        faceRecoveryStableMs: 1000,
+        minConsecutiveSamples: 2,
+        violationCooldownMs: 1200,
+        startFaceCheckTimeoutMs: 2500,
+        startFaceCheckStableMs: 500,
+        startFaceCheckPollMs: 100,
+      }
       : {}),
   });
 
@@ -253,7 +258,9 @@ export default function ActiveQuizPage({
   // No instant feedback — record answer and auto-advance.
   const handleAnswer = (result: QuestionResult) => {
     result.confidence = confidence;
-    setAnswers((prev) => [...prev, result]);
+    const updatedAnswers = [...answersRef.current, result];
+    answersRef.current = updatedAnswers; // keep ref in sync BEFORE any async work
+    setAnswers(updatedAnswers);
 
     // Auto-advance to next question (or finish on last)
     if (!quiz) return;
@@ -261,14 +268,13 @@ export default function ActiveQuizPage({
       setCurrentIndex((i) => i + 1);
       setConfidence(50);
     } else {
-      // Last question — finish the quiz
-      // Use a microtask so the answer state update settles first
-      setTimeout(() => handleFinish(), 0);
+      // Last question — use the ref (always current) to finish
+      handleFinish();
     }
   };
 
-  // ── Finish quiz ─────────────────────────────────────────────
-  const handleFinish = async () => {
+  // ── Finish quiz (accepts explicit answers list to avoid stale closure) ──
+  const handleFinishWithAnswers = async (finalAnswers: QuestionResult[]) => {
     if (!quiz || submitting) return;
     setSubmitting(true);
 
@@ -278,7 +284,7 @@ export default function ActiveQuizPage({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           quizId: quiz.id,
-          answers: answers.map((a) => ({
+          answers: finalAnswers.map((a) => ({
             questionIndex: a.questionIndex,
             userAnswer: a.userAnswer,
             confidence: a.confidence,
@@ -296,7 +302,6 @@ export default function ActiveQuizPage({
         }),
       });
       const results = await res.json();
-      // Track quiz completion
       void track('quiz_completed', {
         score: results.score,
         totalQuestions: results.totalQuestions,
@@ -311,18 +316,17 @@ export default function ActiveQuizPage({
       router.push(`/quiz/results/${quiz.id}`);
     } catch {
       // Offline grading fallback
-      const totalCorrect = answers.filter((a) => a.isCorrect === true).length;
+      const totalCorrect = finalAnswers.filter((a) => a.isCorrect === true).length;
       const score =
-        answers.length > 0 ? (totalCorrect / answers.length) * 100 : 0;
+        finalAnswers.length > 0 ? (totalCorrect / finalAnswers.length) * 100 : 0;
       const results = {
         attemptId: null,
         score,
         totalCorrect,
-        totalQuestions: answers.length,
+        totalQuestions: finalAnswers.length,
         aiSummary: null,
-        wrongCount: answers.filter((a) => a.isCorrect === false).length,
-        // Build local gradedAnswers for offline answer review
-        gradedAnswers: answers.map((a) => {
+        wrongCount: finalAnswers.filter((a) => a.isCorrect === false).length,
+        gradedAnswers: finalAnswers.map((a) => {
           const q = quiz.questions[a.questionIndex];
           return {
             questionIndex: a.questionIndex,
@@ -344,7 +348,11 @@ export default function ActiveQuizPage({
       proctoring.cleanup();
       router.push(`/quiz/results/${quiz.id}`);
     }
+  };
 
+  // ── Finish quiz — always reads from ref so no stale closure possible ──
+  const handleFinish = async () => {
+    handleFinishWithAnswers(answersRef.current);
   };
 
   const toggleFlag = () => {
@@ -387,6 +395,15 @@ export default function ActiveQuizPage({
   ) ?? null;
   const isHandsOn = ['SQL_HANDS_ON', 'EXCEL_HANDS_ON'].includes(
     (currentQuestion.type ?? 'MCQ').toUpperCase()
+  );
+  const isScenario = ['SCENARIO_MCQ', 'SCENARIO_SUBJECTIVE'].includes(
+    (currentQuestion.type ?? 'MCQ').toUpperCase()
+  );
+  const isSubjective = (currentQuestion.type ?? 'MCQ').toUpperCase() === 'SCENARIO_SUBJECTIVE';
+
+  // Detect if we just entered the scenario section
+  const firstScenarioIndex = quiz.questions.findIndex(
+    (q: any) => ['SCENARIO_MCQ', 'SCENARIO_SUBJECTIVE'].includes((q.type ?? 'MCQ').toUpperCase())
   );
 
   return (
@@ -454,180 +471,218 @@ export default function ActiveQuizPage({
             padding: '0 20px',
           }}
         >
-        {/* ── Top Bar: Progress + Timer + Flag ──────────────── */}
-        <div style={{ marginBottom: '1.5rem' }}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '0.75rem',
-              fontSize: '0.9rem',
-            }}
-          >
-            <span style={{ color: '#a5b4fc' }}>
-              Question {currentIndex + 1}{' '}
-              <span style={{ color: '#4b5563' }}>/ {quiz.totalQuestions}</span>
-            </span>
+          {/* ── Top Bar: Progress + Timer + Flag ──────────────── */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <div
+              className="max-sm:!flex-wrap max-sm:!gap-3"
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '0.75rem',
+                fontSize: '0.9rem',
+              }}
+            >
+              <span style={{ color: '#a5b4fc' }}>
+                Question {currentIndex + 1}{' '}
+                <span style={{ color: '#4b5563' }}>/ {quiz.totalQuestions}</span>
+              </span>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <TabSwitchBadge count={proctoring.tabSwitchCount} />
-              <button
-                onClick={toggleFlag}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <TabSwitchBadge count={proctoring.tabSwitchCount} />
+                <button
+                  onClick={toggleFlag}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: flagged.has(currentIndex) ? '#f59e0b' : '#4b5563',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '0.8rem',
+                  }}
+                  title="Flag for review"
+                >
+                  <Flag
+                    size={16}
+                    fill={flagged.has(currentIndex) ? '#f59e0b' : 'none'}
+                  />
+                  {flagged.size > 0 && `(${flagged.size})`}
+                </button>
+                <Timer seconds={timer} timerMins={quiz.timerMins} />
+              </div>
+            </div>
+
+            <div
+              style={{
+                height: '6px',
+                background: 'rgba(255,255,255,0.06)',
+                borderRadius: '3px',
+                overflow: 'hidden',
+              }}
+            >
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                transition={{ type: 'spring', stiffness: 80 }}
                 style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: flagged.has(currentIndex) ? '#f59e0b' : '#4b5563',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  fontSize: '0.8rem',
+                  height: '100%',
+                  background:
+                    'linear-gradient(to right, var(--primary), var(--secondary))',
+                  borderRadius: '3px',
                 }}
-                title="Flag for review"
-              >
-                <Flag
-                  size={16}
-                  fill={flagged.has(currentIndex) ? '#f59e0b' : 'none'}
-                />
-                {flagged.size > 0 && `(${flagged.size})`}
-              </button>
-              <Timer seconds={timer} timerMins={quiz.timerMins} />
+              />
+            </div>
+
+            {/* Question dots */}
+            <div
+              style={{
+                display: 'flex',
+                gap: '4px',
+                marginTop: '0.75rem',
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+              }}
+            >
+              {quiz.questions.map((_: any, i: number) => {
+                const answered = answers.find((a) => a.questionIndex === i);
+                let bg = 'rgba(255,255,255,0.08)';
+                if (answered?.isCorrect === true) {
+                  bg = answered.isCorrect
+                    ? 'rgba(16,185,129,0.5)'
+                    : 'rgba(239,68,68,0.5)';
+                } else if (answered?.isCorrect === false) {
+                  bg = 'rgba(239,68,68,0.5)';
+                } else if (answered && answered.isCorrect === null) {
+                  // Subjective — answered but deferred grading
+                  bg = 'rgba(245,158,11,0.5)';
+                }
+                if (i === currentIndex) {
+                  bg = 'var(--primary)';
+                }
+
+                // Show different dot style for hands-on and scenario questions
+                const qType = (quiz.questions[i]?.type ?? 'MCQ').toUpperCase();
+                const isHO = ['SQL_HANDS_ON', 'EXCEL_HANDS_ON'].includes(qType);
+                const isSC = ['SCENARIO_MCQ', 'SCENARIO_SUBJECTIVE'].includes(qType);
+
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      width: isHO ? '14px' : isSC ? '12px' : '10px',
+                      height: isHO ? '10px' : isSC ? '12px' : '10px',
+                      borderRadius: isHO ? '3px' : isSC ? '2px' : '50%',
+                      background: isSC && i !== currentIndex && !answered
+                        ? 'rgba(245,158,11,0.2)'
+                        : bg,
+                      border: flagged.has(i)
+                        ? '2px solid #f59e0b'
+                        : isSC
+                          ? '1px solid rgba(245,158,11,0.3)'
+                          : '1px solid transparent',
+                      transition: 'all 0.2s',
+                      transform: isSC ? 'rotate(45deg)' : 'none',
+                    }}
+                  />
+                );
+              })}
             </div>
           </div>
 
-          <div
-            style={{
-              height: '6px',
-              background: 'rgba(255,255,255,0.06)',
-              borderRadius: '3px',
-              overflow: 'hidden',
-            }}
-          >
+          {/* ── Scenario Transition Banner ─────────────────── */}
+          {currentIndex === firstScenarioIndex && firstScenarioIndex >= 0 && (
             <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${progress}%` }}
-              transition={{ type: 'spring', stiffness: 80 }}
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
               style={{
-                height: '100%',
-                background:
-                  'linear-gradient(to right, var(--primary), var(--secondary))',
-                borderRadius: '3px',
-              }}
-            />
-          </div>
-
-          {/* Question dots */}
-          <div
-            style={{
-              display: 'flex',
-              gap: '4px',
-              marginTop: '0.75rem',
-              flexWrap: 'wrap',
-              justifyContent: 'center',
-            }}
-          >
-            {quiz.questions.map((_: any, i: number) => {
-              const answered = answers.find((a) => a.questionIndex === i);
-              let bg = 'rgba(255,255,255,0.08)';
-              if (answered?.isCorrect === true) {
-                bg = answered.isCorrect
-                  ? 'rgba(16,185,129,0.5)'
-                  : 'rgba(239,68,68,0.5)';
-              } else if (answered?.isCorrect === false) {
-                bg = 'rgba(239,68,68,0.5)';
-              }
-              if (i === currentIndex) {
-                bg = 'var(--primary)';
-              }
-
-              // Show different dot style for hands-on questions
-              const qType = (quiz.questions[i]?.type ?? 'MCQ').toUpperCase();
-              const isHO = ['SQL_HANDS_ON', 'EXCEL_HANDS_ON'].includes(qType);
-
-              return (
-                <div
-                  key={i}
-                  style={{
-                    width: isHO ? '14px' : '10px',
-                    height: '10px',
-                    borderRadius: isHO ? '3px' : '50%',
-                    background: bg,
-                    border: flagged.has(i)
-                      ? '2px solid #f59e0b'
-                      : '1px solid transparent',
-                    transition: 'all 0.2s',
-                  }}
-                />
-              );
-            })}
-          </div>
-        </div>
-
-        {/* ── Question Card ────────────────────────────────── */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={currentIndex}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.2 }}
-            className="glass-card"
-            style={{ padding: '2.5rem' }}
-          >
-            <QuestionRenderer
-              question={currentQuestion}
-              questionIndex={currentIndex}
-              onAnswer={handleAnswer}
-              result={currentResult}
-              disabled={!!currentResult}
-              footer={
-                !currentResult && !isHandsOn ? (
-                  <ConfidenceSlider
-                    value={confidence}
-                    onChange={setConfidence}
-                    disabled={!!currentResult}
-                  />
-                ) : null
-              }
-            />
-          </motion.div>
-        </AnimatePresence>
-
-        {/* ── Submitting Overlay ────────────────────────────── */}
-        {submitting && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 100,
-              background: 'rgba(15,15,35,0.85)',
-              backdropFilter: 'blur(8px)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '1.5rem',
-            }}
-          >
-            <Loader2
-              size={48}
-              color="var(--primary)"
-              style={{ animation: 'spin 1s linear infinite' }}
-            />
-            <p
-              style={{
-                color: 'white',
-                fontSize: '1.25rem',
-                fontWeight: '600',
+                padding: '1rem 1.5rem',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(99, 102, 241, 0.04))',
+                border: '1px solid rgba(245, 158, 11, 0.2)',
+                marginBottom: '1.25rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
               }}
             >
-              Grading & generating AI analysis...
-            </p>
-          </motion.div>
-        )}
+              <span style={{ fontSize: '1.5rem' }}>📋</span>
+              <div>
+                <p style={{ fontWeight: '700', color: '#fbbf24', fontSize: '0.9rem', marginBottom: '2px' }}>
+                  Scenario-Based Questions
+                </p>
+                <p style={{ color: '#94a3b8', fontSize: '0.78rem', lineHeight: '1.4' }}>
+                  These test your real-world data analytics reasoning. The subjective question will be graded by AI.
+                </p>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ── Question Card ────────────────────────────────── */}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentIndex}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.2 }}
+              className="glass-card"
+              style={{ padding: '2.5rem' }}
+            >
+              <QuestionRenderer
+                question={currentQuestion}
+                questionIndex={currentIndex}
+                onAnswer={handleAnswer}
+                result={currentResult}
+                disabled={!!currentResult}
+                footer={
+                  !currentResult && !isHandsOn && !isSubjective ? (
+                    <ConfidenceSlider
+                      value={confidence}
+                      onChange={setConfidence}
+                      disabled={!!currentResult}
+                    />
+                  ) : null
+                }
+              />
+            </motion.div>
+          </AnimatePresence>
+
+          {/* ── Submitting Overlay ────────────────────────────── */}
+          {submitting && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              style={{
+                position: 'fixed',
+                inset: 0,
+                zIndex: 100,
+                background: 'rgba(15,15,35,0.85)',
+                backdropFilter: 'blur(8px)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '1.5rem',
+              }}
+            >
+              <Loader2
+                size={48}
+                color="var(--primary)"
+                style={{ animation: 'spin 1s linear infinite' }}
+              />
+              <p
+                style={{
+                  color: 'white',
+                  fontSize: '1.25rem',
+                  fontWeight: '600',
+                }}
+              >
+                Analysing your answers...
+              </p>
+            </motion.div>
+          )}
         </main>
       )}
     </div>

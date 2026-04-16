@@ -197,7 +197,7 @@ async function migrateUsers() {
             profileType: r.profileType ?? null,
             persona: r.persona ?? null,
             experienceYears: r.experienceYears ?? null,
-            resumeUrl: r.resumeUrl ?? null,
+
             educationDetails: parseJsonSafe(r.educationDetails),
             toolStack: parseJsonSafe(r.toolStack),
             quizGoal: r.quizGoal ?? null,

@@ -6,7 +6,7 @@ export default function Footer() {
     return (
         <footer
             style={{
-                borderTop: '1px solid rgba(255,255,255,0.05)',
+                borderTop: '1px solid var(--divider)',
                 padding: '2.5rem 20px 2rem',
                 maxWidth: '1200px',
                 margin: '0 auto',
@@ -22,19 +22,19 @@ export default function Footer() {
                     alignItems: 'center',
                     gap: '0.75rem',
                     textDecoration: 'none',
-                    color: 'white',
+                    color: 'var(--text-primary)',
                 }}
             >
-                <BrandLogo iconSize={42} textSize="1.8rem" />
+                <BrandLogo height={48} hideSloganOnMobile={false} />
             </Link>
-            <p style={{ color: '#6b7280', fontSize: '0.85rem', lineHeight: '1.5', marginTop: '0.75rem' }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', lineHeight: '1.5', marginTop: '0.75rem' }}>
                 AI-powered interview prep platform for aspiring data analysts.
             </p>
 
             {/* Divider + Bottom bar */}
             <div
                 style={{
-                    borderTop: '1px solid rgba(255,255,255,0.05)',
+                    borderTop: '1px solid var(--divider)',
                     marginTop: '1.5rem',
                     paddingTop: '1.25rem',
                     display: 'flex',
@@ -44,7 +44,7 @@ export default function Footer() {
                     gap: '1rem',
                 }}
             >
-                <p style={{ color: '#4b5563', fontSize: '0.8rem', margin: 0 }}>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', margin: 0 }}>
                     © {new Date().getFullYear()} {BRAND_NAME}. All rights reserved.
                 </p>
                 <div style={{ display: 'flex', gap: '1.5rem' }}>
@@ -53,7 +53,7 @@ export default function Footer() {
                             key={text}
                             href="#"
                             style={{
-                                color: '#4b5563',
+                                color: 'var(--text-muted)',
                                 textDecoration: 'none',
                                 fontSize: '0.8rem',
                             }}
