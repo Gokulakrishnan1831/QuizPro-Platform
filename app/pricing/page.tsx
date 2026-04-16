@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Navbar from '@/components/layout/Navbar';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -9,94 +9,21 @@ import {
   Star,
   ArrowRight,
   Loader2,
-  AlertCircle,
   CheckCircle2,
   X,
   Crown,
   Sparkles,
-  QrCode,
-  Copy,
-  Upload,
-  Clock,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { auth } from '@/lib/firebase/client';
 import { onAuthStateChanged } from 'firebase/auth';
 import { track } from '@/lib/analytics';
+import { PLANS, type Plan } from '@/lib/plans';
 
-/* ─── Plan definitions ───────────────────────────────────────── */
+/* ─── Plan definitions (sourced from lib/plans.ts) ───────────── */
+const TIERS = PLANS;
 
-const TIERS = [
-  {
-    id: 'FREE',
-    name: 'Free',
-    price: 0,
-    quizzes: 1,
-    isPopular: false,
-    color: '#6b7280',
-    icon: '🎯',
-    description: 'Try before you commit',
-    features: [
-      '1 AI-generated quiz',
-      'MCQ questions only',
-      'Basic score report',
-      'Skill accuracy breakdown',
-    ],
-  },
-  {
-    id: 'BASIC',
-    name: 'Basic',
-    price: 99,
-    quizzes: 3,
-    isPopular: false,
-    color: '#06b6d4',
-    icon: '📚',
-    description: 'Start your prep journey',
-    features: [
-      '3 AI-generated quizzes',
-      'Practice & Interview Prep modes',
-      'Detailed score reports with AI focus topics',
-      'AI performance summary',
-      'Segmented leaderboard access',
-    ],
-  },
-  {
-    id: 'PRO',
-    name: 'Pro',
-    price: 299,
-    quizzes: 10,
-    isPopular: true,
-    color: '#6366f1',
-    icon: '🚀',
-    description: 'Most popular — full experience',
-    features: [
-      '10 AI-generated quizzes',
-      'Hands-on SQL & Excel questions',
-      'Company-specific interview prep (JD-tailored)',
-      'AI improvement roadmap & focus topics',
-      'Per-skill leaderboard ranking',
-      'Priority support',
-    ],
-  },
-  {
-    id: 'ELITE',
-    name: 'Elite',
-    price: 499,
-    quizzes: 20,
-    isPopular: false,
-    color: '#f59e0b',
-    icon: '👑',
-    description: 'For serious job seekers',
-    features: [
-      '20 AI-generated quizzes',
-      'Everything in Pro',
-      'Company interview pattern analysis',
-      'Unlimited quiz retries',
-      'Resume upload & analysis',
-      'Personalized mentorship access',
-    ],
-  },
-];
+
 
 /* ─── UPI Payment Modal ──────────────────────────────────────── */
 
@@ -202,7 +129,7 @@ function UpiModal({
         style={{
           width: '100%',
           maxWidth: '480px',
-          background: 'rgba(20,20,48,0.98)',
+          background: 'var(--dropdown-bg)',
           border: `1px solid ${tier.color}30`,
           borderRadius: '20px',
           padding: '2rem',
@@ -218,7 +145,7 @@ function UpiModal({
             right: '16px',
             background: 'none',
             border: 'none',
-            color: '#6b7280',
+            color: 'var(--text-muted)',
             cursor: 'pointer',
           }}
         >
@@ -234,7 +161,7 @@ function UpiModal({
             <h2 style={{ fontWeight: '800', fontSize: '1.4rem', marginBottom: '0.5rem' }}>
               Payment Submitted!
             </h2>
-            <p style={{ color: '#a5b4fc', marginBottom: '1.5rem', lineHeight: 1.6 }}>
+            <p style={{ color: 'var(--text-accent)', marginBottom: '1.5rem', lineHeight: 1.6 }}>
               Your payment request has been sent to the admin. Your account will be upgraded to{' '}
               <strong style={{ color: tier.color }}>{tier.name}</strong> within{' '}
               <strong>24 hours</strong> after verification.
@@ -245,7 +172,7 @@ function UpiModal({
                 borderRadius: '12px',
                 background: 'rgba(16,185,129,0.06)',
                 border: '1px solid rgba(16,185,129,0.2)',
-                color: '#6b7280',
+                color: 'var(--text-muted)',
                 fontSize: '0.85rem',
                 marginBottom: '1.5rem',
               }}
@@ -270,7 +197,7 @@ function UpiModal({
               <p style={{ color: tier.color, fontWeight: '900', fontSize: '1.8rem' }}>
                 ₹{tier.price}
               </p>
-              <p style={{ color: '#6b7280', fontSize: '0.85rem' }}>One-time payment</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>One-time payment</p>
             </div>
 
             {/* QR Code */}
@@ -316,8 +243,8 @@ function UpiModal({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.08)',
+                  background: 'var(--subtle-bg)',
+                  border: '1px solid var(--border-color)',
                   borderRadius: '12px',
                   padding: '12px 16px',
                   marginBottom: '1.25rem',
@@ -327,12 +254,12 @@ function UpiModal({
                 title="Click to copy UPI ID"
               >
                 <div>
-                  <div style={{ fontSize: '0.72rem', color: '#6b7280', marginBottom: '2px' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '2px' }}>
                     UPI ID
                   </div>
-                  <div style={{ fontWeight: '700', color: 'white' }}>{upiData.upiId}</div>
+                  <div style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{upiData.upiId}</div>
                   {upiData.upiName && (
-                    <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>{upiData.upiName}</div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{upiData.upiName}</div>
                   )}
                 </div>
                 <div style={{ color: copied ? '#10b981' : '#6b7280' }}>
@@ -372,13 +299,13 @@ function UpiModal({
             <h2 style={{ fontWeight: '800', fontSize: '1.2rem', marginBottom: '0.5rem' }}>
               Confirm Your Payment
             </h2>
-            <p style={{ color: '#6b7280', fontSize: '0.88rem', marginBottom: '1.5rem' }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '1.5rem' }}>
               Enter the UPI transaction ID from your payment app's history.
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.25rem' }}>
               <div>
-                <label style={{ fontSize: '0.8rem', color: '#6b7280', display: 'block', marginBottom: '6px' }}>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
                   UPI Transaction ID *
                 </label>
                 <input
@@ -388,13 +315,13 @@ function UpiModal({
                   onChange={(e) => setTxnId(e.target.value)}
                   style={{ fontSize: '0.95rem' }}
                 />
-                <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '4px' }}>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
                   Found in your UPI app under payment history/receipts
                 </p>
               </div>
 
               <div>
-                <label style={{ fontSize: '0.8rem', color: '#6b7280', display: 'block', marginBottom: '6px' }}>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
                   Payment Screenshot (optional, helps faster verification)
                 </label>
                 <div
@@ -415,7 +342,7 @@ function UpiModal({
                       style={{ maxHeight: '140px', borderRadius: '8px', objectFit: 'contain' }}
                     />
                   ) : (
-                    <div style={{ color: '#6b7280', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
                       <Upload size={22} color="#6366f1" />
                       Click to upload screenshot
                     </div>
@@ -457,9 +384,9 @@ function UpiModal({
                   flex: 0,
                   padding: '12px 18px',
                   borderRadius: '12px',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  border: '1px solid var(--border-color)',
                   background: 'none',
-                  color: '#a5b4fc',
+                  color: 'var(--text-accent)',
                   cursor: 'pointer',
                   whiteSpace: 'nowrap',
                 }}
@@ -492,33 +419,24 @@ export default function PricingPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [currentTier, setCurrentTier] = useState<string>('FREE');
-  const [selectedTier, setSelectedTier] = useState<(typeof TIERS)[number] | null>(null);
+  const [loadingTier, setLoadingTier] = useState<string | null>(null);
+  const [payError, setPayError] = useState('');
   const [successTier, setSuccessTier] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
-        const res = await fetch('/api/user/profile');
+        const res = await fetch('/api/profile');
         const data = await res.json();
-        const apiTier = data.subscriptionTier ?? 'FREE';
+        const apiTier = data.profile?.subscriptionTier ?? 'FREE';
         setCurrentTier(apiTier);
-
-        const params = new URLSearchParams(window.location.search);
-        const paramPlan = params.get('plan')?.toUpperCase();
-        if (paramPlan && paramPlan !== apiTier) {
-          const matched = TIERS.find(t => t.id === paramPlan);
-          if (matched && matched.price > 0) {
-            setSelectedTier(matched);
-            window.history.replaceState({}, '', '/pricing');
-          }
-        }
       }
     });
     return () => unsubscribe();
   }, []);
 
-  const handleUpgrade = (tier: (typeof TIERS)[number]) => {
+  const handleUpgrade = useCallback(async (tier: Plan) => {
     if (!user) {
       sessionStorage.setItem('afterLogin', '/pricing');
       router.push('/login');
@@ -526,23 +444,58 @@ export default function PricingPage() {
     }
     if (tier.price === 0 || tier.id === currentTier) return;
     void track('upgrade_clicked', { tier: tier.id });
-    setSelectedTier(tier);
-  };
+
+    setLoadingTier(tier.id);
+    setPayError('');
+    try {
+      const res = await fetch('/api/subscriptions/cashfree-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier: tier.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.paymentSessionId) {
+        setPayError(data.error ?? 'Failed to initiate payment. Please try again.');
+        setLoadingTier(null);
+        return;
+      }
+
+      const cashfreeEnv = process.env.NEXT_PUBLIC_CASHFREE_ENV ?? 'production';
+      const { load } = await import('@cashfreepayments/cashfree-js');
+      const cashfree = await load({ mode: cashfreeEnv as 'production' | 'sandbox' });
+      await cashfree.checkout({
+        paymentSessionId: data.paymentSessionId,
+        redirectTarget: '_self',
+      });
+    } catch (err: any) {
+      setPayError(err?.message ?? 'Payment failed. Please try again.');
+      setLoadingTier(null);
+    }
+  }, [user, currentTier, router]);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f0f23', color: 'white', fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-start)', color: 'var(--text-primary)', fontFamily: 'system-ui, sans-serif' }}>
       <Navbar />
 
+      {/* Payment error banner */}
       <AnimatePresence>
-        {selectedTier && (
-          <UpiModal
-            tier={selectedTier}
-            onClose={() => setSelectedTier(null)}
-            onSuccess={() => {
-              setSuccessTier(selectedTier.id);
-              setSelectedTier(null);
+        {payError && (
+          <motion.div
+            initial={{ opacity: 0, y: -60 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -60 }}
+            style={{
+              position: 'fixed', top: '80px', left: '50%', transform: 'translateX(-50%)',
+              zIndex: 150, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)',
+              color: '#f87171', padding: '14px 24px', borderRadius: '12px', fontWeight: '700',
+              display: 'flex', alignItems: 'center', gap: '10px',
             }}
-          />
+          >
+            {payError}
+            <button onClick={() => setPayError('')} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', marginLeft: '8px' }}>
+              <X size={16} />
+            </button>
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -600,7 +553,7 @@ export default function PricingPage() {
               border: '1px solid rgba(99,102,241,0.2)',
               borderRadius: '20px',
               fontSize: '0.85rem',
-              color: '#a5b4fc',
+              color: 'var(--text-accent)',
               marginBottom: '1.5rem',
             }}
           >
@@ -627,7 +580,7 @@ export default function PricingPage() {
             </span>
           </h1>
 
-          <p style={{ color: '#a5b4fc', fontSize: '1.05rem', maxWidth: '520px', margin: '0 auto' }}>
+          <p style={{ color: 'var(--text-accent)', fontSize: '1.05rem', maxWidth: '520px', margin: '0 auto' }}>
             One-time UPI payment · No subscriptions · No auto-renewals · Just results.
           </p>
         </motion.div>
@@ -686,21 +639,21 @@ export default function PricingPage() {
                 <div
                   style={{
                     height: '100%',
-                    background: 'rgba(20,20,50,0.7)',
+                    background: 'var(--card-bg)',
                     backdropFilter: 'blur(12px)',
-                    border: `1px solid ${isCurrentTier ? tier.color : tier.isPopular ? `${tier.color}40` : 'rgba(255,255,255,0.07)'}`,
+                    border: `1px solid ${isCurrentTier ? tier.color : tier.isPopular ? `${tier.color}40` : 'var(--border-color)'}`,
                     borderRadius: '20px',
                     padding: '2rem',
                     display: 'flex',
                     flexDirection: 'column',
-                    boxShadow: tier.isPopular ? `0 0 40px ${tier.color}12` : 'none',
+                    boxShadow: tier.isPopular ? `0 0 40px ${tier.color}12` : 'var(--shadow-sm)',
                   }}
                 >
                   {/* Header */}
                   <div style={{ marginBottom: '1.5rem' }}>
                     <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>{tier.icon}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.5rem' }}>
-                      <h3 style={{ fontSize: '1.3rem', fontWeight: '800', color: 'white' }}>
+                      <h3 style={{ fontSize: '1.3rem', fontWeight: '800', color: 'var(--text-primary)' }}>
                         {tier.name}
                       </h3>
                       {isCurrentTier && (
@@ -718,7 +671,7 @@ export default function PricingPage() {
                         </span>
                       )}
                     </div>
-                    <p style={{ color: '#6b7280', fontSize: '0.88rem' }}>{tier.description}</p>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem' }}>{tier.description}</p>
                   </div>
 
                   {/* Price */}
@@ -728,33 +681,33 @@ export default function PricingPage() {
                         {isFree ? 'Free' : `₹${tier.price}`}
                       </span>
                       {!isFree && (
-                        <span style={{ color: '#6b7280', fontSize: '0.85rem' }}>one-time</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>one-time</span>
                       )}
                     </div>
-                    <p style={{ color: '#6b7280', fontSize: '0.82rem' }}>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
                       {tier.quizzes} quiz{tier.quizzes !== 1 ? 'zes' : ''}
                     </p>
                   </div>
 
                   {/* Features */}
                   <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 2rem', flex: 1 }}>
-                    {tier.features.map((f) => (
+                    {tier.features.filter((f) => f.available).map((f) => (
                       <li
-                        key={f}
+                        key={f.label}
                         style={{
                           display: 'flex',
                           alignItems: 'flex-start',
                           gap: '10px',
                           marginBottom: '10px',
                           fontSize: '0.88rem',
-                          color: '#e2e8f0',
+                          color: 'var(--text-secondary)',
                         }}
                       >
                         <Check
                           size={16}
                           style={{ color: tier.color, flexShrink: 0, marginTop: '2px' }}
                         />
-                        {f}
+                        {f.label}
                       </li>
                     ))}
                   </ul>
@@ -762,37 +715,28 @@ export default function PricingPage() {
                   {/* CTA */}
                   <button
                     onClick={() => handleUpgrade(tier)}
-                    disabled={isCurrentTier}
+                    disabled={isCurrentTier || loadingTier === tier.id}
                     style={{
-                      width: '100%',
-                      padding: '13px',
-                      borderRadius: '12px',
-                      border: isFree || isCurrentTier
-                        ? `1px solid rgba(255,255,255,0.1)`
-                        : 'none',
-                      background: isFree || isCurrentTier
-                        ? 'rgba(255,255,255,0.04)'
-                        : `linear-gradient(135deg, ${tier.color}, ${tier.color}cc)`,
-                      color: isCurrentTier ? '#6b7280' : 'white',
-                      fontWeight: '700',
-                      fontSize: '0.95rem',
+                      width: '100%', padding: '13px', borderRadius: '12px',
+                      border: isFree || isCurrentTier ? `1px solid var(--border-color)` : 'none',
+                      background: isFree || isCurrentTier ? 'var(--subtle-bg)' : `linear-gradient(135deg, ${tier.color}, ${tier.color}cc)`,
+                      color: isCurrentTier ? 'var(--text-muted)' : 'white',
+                      fontWeight: '700', fontSize: '0.95rem',
                       cursor: isCurrentTier ? 'not-allowed' : isFree ? 'default' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                       transition: 'all 0.2s',
-                      boxShadow: !isFree && !isCurrentTier
-                        ? `0 4px 20px ${tier.color}30`
-                        : 'none',
+                      boxShadow: !isFree && !isCurrentTier ? `0 4px 20px ${tier.color}30` : 'none',
+                      opacity: loadingTier && loadingTier !== tier.id ? 0.6 : 1,
                     }}
                   >
                     {isCurrentTier ? (
                       <><CheckCircle2 size={16} /> Current Plan</>
                     ) : isFree ? (
                       <>Get Started Free <ArrowRight size={16} /></>
+                    ) : loadingTier === tier.id ? (
+                      <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Processing…</>
                     ) : (
-                      <>Pay ₹{tier.price} via UPI <ArrowRight size={16} /></>
+                      <><Zap size={15} fill="white" /> Upgrade Now <ArrowRight size={16} /></>
                     )}
                   </button>
                 </div>
@@ -817,7 +761,7 @@ export default function PricingPage() {
           <h2 style={{ fontSize: '1.4rem', fontWeight: '800', marginBottom: '0.75rem' }}>
             How UPI Payment Works
           </h2>
-          <p style={{ color: '#6b7280', marginBottom: '2rem', fontSize: '0.9rem' }}>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', fontSize: '0.9rem' }}>
             Simple, instant, and verified within 24 hours
           </p>
           <div
@@ -835,10 +779,10 @@ export default function PricingPage() {
             ].map((s) => (
               <div key={s.step} style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{s.icon}</div>
-                <div style={{ fontWeight: '700', marginBottom: '0.35rem', color: 'white' }}>
+                <div style={{ fontWeight: '700', marginBottom: '0.35rem', color: 'var(--text-primary)' }}>
                   {s.label}
                 </div>
-                <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>{s.desc}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{s.desc}</div>
               </div>
             ))}
           </div>

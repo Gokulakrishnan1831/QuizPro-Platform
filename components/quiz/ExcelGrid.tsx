@@ -226,9 +226,10 @@ export default function ExcelGrid({
                     style={{
                         padding: '4px 12px',
                         borderRadius: '20px',
-                        background: 'rgba(255,255,255,0.04)',
+                        background: 'var(--subtle-bg)',
+                        border: '1px solid var(--border-color)',
                         fontSize: '0.7rem',
-                        color: '#6b7280',
+                        color: 'var(--text-muted)',
                     }}
                 >
                     Difficulty {question.difficulty}/10
@@ -240,7 +241,7 @@ export default function ExcelGrid({
                     fontSize: '1.2rem',
                     fontWeight: '600',
                     lineHeight: '1.6',
-                    color: '#f1f5f9',
+                    color: 'var(--text-primary)',
                     marginBottom: '1.5rem',
                 }}
             >
@@ -255,15 +256,15 @@ export default function ExcelGrid({
                     gap: '8px',
                     marginBottom: '2px',
                     padding: '6px 12px',
-                    background: 'rgba(45, 45, 45, 0.8)',
+                    background: 'var(--subtle-bg)',
                     borderRadius: '8px 8px 0 0',
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    border: '1px solid var(--border-color)',
                     borderBottom: 'none',
                 }}
             >
                 <span
                     style={{
-                        color: '#6b7280',
+                        color: 'var(--text-muted)',
                         fontSize: '0.75rem',
                         fontWeight: '600',
                         minWidth: '30px',
@@ -281,7 +282,7 @@ export default function ExcelGrid({
                         flex: 1,
                         background: 'transparent',
                         border: 'none',
-                        color: 'white',
+                        color: 'var(--text-primary)',
                         outline: 'none',
                         fontSize: '0.85rem',
                         fontFamily: 'monospace',
@@ -296,9 +297,9 @@ export default function ExcelGrid({
                         gap: '4px',
                         padding: '4px 10px',
                         borderRadius: '4px',
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        background: 'transparent',
-                        color: '#6b7280',
+                        border: '1px solid var(--border-color)',
+                        background: 'var(--background)',
+                        color: 'var(--text-primary)',
                         cursor: disabled ? 'default' : 'pointer',
                         fontSize: '0.7rem',
                     }}
@@ -311,7 +312,7 @@ export default function ExcelGrid({
                 style={{
                     borderRadius: '0 0 12px 12px',
                     overflow: 'hidden',
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    border: '1px solid var(--border-color)',
                     marginBottom: '1.5rem',
                 }}
             >
@@ -329,10 +330,10 @@ export default function ExcelGrid({
                                 <th
                                     style={{
                                         padding: '8px 12px',
-                                        background: 'rgba(45, 45, 45, 0.6)',
-                                        borderRight: '1px solid rgba(255,255,255,0.06)',
-                                        borderBottom: '1px solid rgba(255,255,255,0.1)',
-                                        color: '#4b5563',
+                                        background: 'var(--subtle-bg)',
+                                        borderRight: '1px solid var(--border-color)',
+                                        borderBottom: '1px solid var(--border-color)',
+                                        color: 'var(--text-muted)',
                                         fontWeight: '600',
                                         fontSize: '0.7rem',
                                         textAlign: 'center',
@@ -346,10 +347,10 @@ export default function ExcelGrid({
                                         key={ci}
                                         style={{
                                             padding: '8px 16px',
-                                            background: 'rgba(45, 45, 45, 0.6)',
-                                            borderRight: '1px solid rgba(255,255,255,0.06)',
-                                            borderBottom: '1px solid rgba(255,255,255,0.1)',
-                                            color: '#a5b4fc',
+                                            background: 'var(--subtle-bg)',
+                                            borderRight: '1px solid var(--border-color)',
+                                            borderBottom: '1px solid var(--border-color)',
+                                            color: 'var(--primary)',
                                             fontWeight: '700',
                                             fontSize: '0.75rem',
                                             textAlign: 'left',
@@ -358,7 +359,7 @@ export default function ExcelGrid({
                                         }}
                                     >
                                         <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                            <span style={{ color: '#4b5563', fontSize: '0.6rem' }}>
+                                            <span style={{ color: 'var(--text-muted)', fontSize: '0.6rem' }}>
                                                 {colLetter(ci)}
                                             </span>
                                             {col}
@@ -373,10 +374,10 @@ export default function ExcelGrid({
                                     <td
                                         style={{
                                             padding: '6px 12px',
-                                            background: 'rgba(45, 45, 45, 0.3)',
-                                            borderRight: '1px solid rgba(255,255,255,0.06)',
-                                            borderBottom: '1px solid rgba(255,255,255,0.04)',
-                                            color: '#4b5563',
+                                            background: 'var(--subtle-bg)',
+                                            borderRight: '1px solid var(--border-color)',
+                                            borderBottom: '1px solid var(--border-color)',
+                                            color: 'var(--text-muted)',
                                             fontWeight: '600',
                                             fontSize: '0.7rem',
                                             textAlign: 'center',
@@ -399,9 +400,9 @@ export default function ExcelGrid({
                                                 onClick={() => handleCellClick(ri, ci)}
                                                 style={{
                                                     padding: '6px 16px',
-                                                    borderRight: '1px solid rgba(255,255,255,0.04)',
-                                                    borderBottom: '1px solid rgba(255,255,255,0.04)',
-                                                    color: editable ? '#f1f5f9' : '#cbd5e1',
+                                                    borderRight: '1px solid var(--border-color)',
+                                                    borderBottom: '1px solid var(--border-color)',
+                                                    color: editable ? 'var(--text-primary)' : 'var(--text-muted)',
                                                     cursor: editable && !disabled ? 'pointer' : 'default',
                                                     background: isActive
                                                         ? 'rgba(99, 102, 241, 0.12)'
@@ -459,7 +460,7 @@ export default function ExcelGrid({
                                                                 background: 'transparent',
                                                                 border: 'none',
                                                                 outline: 'none',
-                                                                color: '#f1f5f9',
+                                                                color: 'var(--text-primary)',
                                                                 fontFamily: 'monospace',
                                                                 fontSize: '0.82rem',
                                                             }}

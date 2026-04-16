@@ -37,6 +37,12 @@ interface GradedAnswer {
   skill: string;
   type: string;
   confidence?: number;
+  scenario?: string;
+  // Scenario subjective fields
+  accuracyScore?: number;
+  feedback?: string;
+  keyPointsCovered?: string[];
+  keyPointsMissed?: string[];
 }
 
 interface QuizResults {
@@ -85,7 +91,7 @@ function ScoreRing({ score, color }: { score: number; color: string }) {
         x="70"
         y="65"
         textAnchor="middle"
-        fill="white"
+        fill="var(--text-primary)"
         fontSize="28"
         fontWeight="900"
       >
@@ -128,12 +134,12 @@ export default function ResultsPage({
         <Navbar />
         <div
           style={{
-            color: 'white',
+            color: 'var(--text-primary)',
             padding: '100px 20px',
             textAlign: 'center',
           }}
         >
-          <p style={{ marginBottom: '1rem', color: '#a5b4fc' }}>
+          <p style={{ marginBottom: '1rem', color: 'var(--text-secondary)' }}>
             Results not found.
           </p>
           <Link
@@ -275,7 +281,7 @@ export default function ResultsPage({
               >
                 {results.totalCorrect}
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                 Correct
               </div>
             </div>
@@ -302,7 +308,7 @@ export default function ResultsPage({
               >
                 {results.wrongCount}
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                 Wrong
               </div>
             </div>
@@ -329,7 +335,7 @@ export default function ResultsPage({
               >
                 {results.totalQuestions}
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                 Total
               </div>
             </div>
@@ -356,11 +362,11 @@ export default function ResultsPage({
               }}
             >
               <Sparkles size={20} color="#6366f1" />
-              AI Performance Analysis
+              Preplytics Analysis
             </h3>
             <p
               style={{
-                color: '#cbd5e1',
+                color: 'var(--text-secondary)',
                 lineHeight: '1.8',
                 fontSize: '0.92rem',
                 whiteSpace: 'pre-line',
@@ -390,7 +396,7 @@ export default function ResultsPage({
                 gap: '0.5rem',
               }}
             >
-              <BookOpen size={20} color="#a5b4fc" />
+              <BookOpen size={20} color="var(--text-accent)" />
               Answer Review
               <span
                 style={{
@@ -399,7 +405,7 @@ export default function ResultsPage({
                   borderRadius: '12px',
                   background: 'rgba(255,255,255,0.05)',
                   fontSize: '0.8rem',
-                  color: '#6b7280',
+                  color: 'var(--text-muted)',
                   fontWeight: '400',
                 }}
               >
@@ -450,7 +456,7 @@ export default function ResultsPage({
                           style={{
                             flex: 1,
                             fontSize: '0.88rem',
-                            color: '#e2e8f0',
+                            color: 'var(--text-primary)',
                             lineHeight: '1.4',
                           }}
                         >
@@ -464,16 +470,16 @@ export default function ResultsPage({
                             borderRadius: '8px',
                             background: 'rgba(255,255,255,0.04)',
                             fontSize: '0.7rem',
-                            color: '#6b7280',
+                            color: 'var(--text-muted)',
                             flexShrink: 0,
                           }}
                         >
                           {ga.skill}
                         </span>
                         {isOpen ? (
-                          <ChevronUp size={16} color="#6b7280" style={{ flexShrink: 0 }} />
+                          <ChevronUp size={16} color="var(--text-muted)" style={{ flexShrink: 0 }} />
                         ) : (
-                          <ChevronDown size={16} color="#6b7280" style={{ flexShrink: 0 }} />
+                          <ChevronDown size={16} color="var(--text-muted)" style={{ flexShrink: 0 }} />
                         )}
                       </button>
 
@@ -498,7 +504,7 @@ export default function ResultsPage({
                             <p
                               style={{
                                 fontSize: '0.875rem',
-                                color: '#f1f5f9',
+                                color: 'var(--text-primary)',
                                 lineHeight: '1.6',
                               }}
                             >
@@ -519,7 +525,7 @@ export default function ResultsPage({
                                 fontSize: '0.82rem',
                               }}
                             >
-                              <span style={{ color: '#6b7280' }}>Your answer: </span>
+                              <span style={{ color: 'var(--text-muted)' }}>Your answer: </span>
                               <span
                                 style={{
                                   color: ga.isCorrect ? '#10b981' : '#ef4444',
@@ -541,7 +547,7 @@ export default function ResultsPage({
                                   fontSize: '0.82rem',
                                 }}
                               >
-                                <span style={{ color: '#6b7280' }}>Correct answer: </span>
+                                <span style={{ color: 'var(--text-muted)' }}>Correct answer: </span>
                                 <span style={{ color: '#10b981', fontWeight: '600' }}>
                                   {ga.correctAnswer}
                                 </span>
@@ -557,13 +563,13 @@ export default function ResultsPage({
                                   background: 'rgba(165,180,252,0.04)',
                                   border: '1px solid rgba(165,180,252,0.08)',
                                   fontSize: '0.82rem',
-                                  color: '#cbd5e1',
+                                  color: 'var(--text-secondary)',
                                   lineHeight: '1.6',
                                 }}
                               >
                                 <span
                                   style={{
-                                    color: '#a5b4fc',
+                                    color: 'var(--text-secondary)',
                                     fontWeight: '600',
                                     display: 'block',
                                     marginBottom: '4px',
@@ -583,6 +589,298 @@ export default function ResultsPage({
             </div>
           </motion.div>
         )}
+
+        {/* ── Scenario Performance ──────────────────────────── */}
+        {results.gradedAnswers && (() => {
+          const scenarioAnswers = results.gradedAnswers!.filter(
+            (ga) => ['SCENARIO_MCQ', 'SCENARIO_SUBJECTIVE'].includes((ga.type ?? '').toUpperCase())
+          );
+          if (scenarioAnswers.length === 0) return null;
+
+          return (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.42 }}
+              className="glass-card"
+              style={{ padding: '2rem', marginBottom: '1.5rem' }}
+            >
+              <h3
+                style={{
+                  fontSize: '1.15rem',
+                  fontWeight: '700',
+                  marginBottom: '1.25rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                }}
+              >
+                <Target size={20} color="#f59e0b" />
+                Scenario-Based Performance
+                <span
+                  style={{
+                    marginLeft: '8px',
+                    padding: '2px 10px',
+                    borderRadius: '12px',
+                    background: 'rgba(245, 158, 11, 0.08)',
+                    fontSize: '0.8rem',
+                    color: '#fbbf24',
+                    fontWeight: '400',
+                  }}
+                >
+                  Real-World Analytics
+                </span>
+              </h3>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {scenarioAnswers.map((ga, idx) => {
+                  const isSubjective = (ga.type ?? '').toUpperCase() === 'SCENARIO_SUBJECTIVE';
+                  const accuracyScore = ga.accuracyScore ?? 0;
+                  const scoreColor = accuracyScore >= 80 ? '#10b981'
+                    : accuracyScore >= 50 ? '#f59e0b'
+                      : '#ef4444';
+
+                  return (
+                    <div
+                      key={idx}
+                      style={{
+                        borderRadius: '14px',
+                        border: '1px solid rgba(245, 158, 11, 0.15)',
+                        background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.04), rgba(99, 102, 241, 0.02))',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {/* Header */}
+                      <div
+                        style={{
+                          padding: '14px 18px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          borderBottom: '1px solid rgba(255,255,255,0.04)',
+                        }}
+                      >
+                        <span
+                          style={{
+                            padding: '3px 10px',
+                            borderRadius: '14px',
+                            background: isSubjective
+                              ? 'rgba(245, 158, 11, 0.12)'
+                              : 'rgba(99, 102, 241, 0.12)',
+                            fontSize: '0.7rem',
+                            color: isSubjective ? '#f59e0b' : '#a5b4fc',
+                            fontWeight: '700',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px',
+                          }}
+                        >
+                          {isSubjective ? '✍️ Subjective' : '🎯 Scenario MCQ'}
+                        </span>
+                        {!isSubjective && (
+                          ga.isCorrect ? (
+                            <CheckCircle2 size={16} color="#10b981" />
+                          ) : (
+                            <XCircle size={16} color="#ef4444" />
+                          )
+                        )}
+                        {isSubjective && (
+                          <span
+                            style={{
+                              fontSize: '0.82rem',
+                              fontWeight: '700',
+                              color: scoreColor,
+                            }}
+                          >
+                            {accuracyScore}% Accuracy
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Body */}
+                      <div style={{ padding: '16px 18px' }}>
+                        {/* Scenario context */}
+                        {ga.scenario && (
+                          <div
+                            style={{
+                              padding: '10px 14px',
+                              borderRadius: '8px',
+                              background: 'rgba(245, 158, 11, 0.04)',
+                              border: '1px solid rgba(245, 158, 11, 0.1)',
+                              marginBottom: '12px',
+                              fontSize: '0.82rem',
+                              color: 'var(--text-secondary)',
+                              lineHeight: '1.6',
+                            }}
+                          >
+                            <span style={{ color: '#fbbf24', fontWeight: '600', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                              📋 Scenario
+                            </span>
+                            <p style={{ marginTop: '4px' }}>{ga.scenario}</p>
+                          </div>
+                        )}
+
+                        {/* Question */}
+                        <p style={{ fontSize: '0.88rem', color: 'var(--text-primary)', lineHeight: '1.6', marginBottom: '12px' }}>
+                          {ga.content}
+                        </p>
+
+                        {/* Subjective: Accuracy ring + feedback */}
+                        {isSubjective && (
+                          <div style={{ marginBottom: '12px' }}>
+                            {/* Accuracy bar */}
+                            <div style={{ marginBottom: '12px' }}>
+                              <div style={{
+                                display: 'flex', justifyContent: 'space-between',
+                                marginBottom: '6px', fontSize: '0.78rem',
+                              }}>
+                                <span style={{ color: 'var(--text-muted)' }}>AI Accuracy Score</span>
+                                <span style={{ color: scoreColor, fontWeight: '700' }}>{accuracyScore}%</span>
+                              </div>
+                              <div style={{
+                                height: '8px', borderRadius: '4px',
+                                background: 'rgba(255,255,255,0.06)',
+                                overflow: 'hidden',
+                              }}>
+                                <motion.div
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${accuracyScore}%` }}
+                                  transition={{ duration: 1, ease: 'easeOut', delay: 0.5 }}
+                                  style={{
+                                    height: '100%',
+                                    borderRadius: '4px',
+                                    background: `linear-gradient(90deg, ${scoreColor}, ${scoreColor}80)`,
+                                  }}
+                                />
+                              </div>
+                            </div>
+
+                            {/* LLM Feedback */}
+                            {ga.feedback && (
+                              <div style={{
+                                padding: '12px 14px', borderRadius: '8px',
+                                background: 'rgba(99, 102, 241, 0.04)',
+                                border: '1px solid rgba(99, 102, 241, 0.1)',
+                                marginBottom: '12px', fontSize: '0.82rem',
+                                color: 'var(--text-secondary)', lineHeight: '1.6',
+                              }}>
+                                <span style={{ color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
+                                  🧠 AI Feedback
+                                </span>
+                                {ga.feedback}
+                              </div>
+                            )}
+
+                            {/* Key points covered & missed */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                              {ga.keyPointsCovered && ga.keyPointsCovered.length > 0 && (
+                                <div style={{
+                                  padding: '10px 12px', borderRadius: '8px',
+                                  background: 'rgba(16, 185, 129, 0.04)',
+                                  border: '1px solid rgba(16, 185, 129, 0.1)',
+                                }}>
+                                  <span style={{ color: '#10b981', fontWeight: '600', fontSize: '0.72rem', textTransform: 'uppercase' }}>
+                                    ✅ Points Covered
+                                  </span>
+                                  <ul style={{ margin: '6px 0 0', paddingLeft: '14px', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: '1.6' }}>
+                                    {ga.keyPointsCovered.map((pt, j) => (
+                                      <li key={j}>{pt}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {ga.keyPointsMissed && ga.keyPointsMissed.length > 0 && (
+                                <div style={{
+                                  padding: '10px 12px', borderRadius: '8px',
+                                  background: 'rgba(239, 68, 68, 0.04)',
+                                  border: '1px solid rgba(239, 68, 68, 0.1)',
+                                }}>
+                                  <span style={{ color: '#ef4444', fontWeight: '600', fontSize: '0.72rem', textTransform: 'uppercase' }}>
+                                    ❌ Points Missed
+                                  </span>
+                                  <ul style={{ margin: '6px 0 0', paddingLeft: '14px', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: '1.6' }}>
+                                    {ga.keyPointsMissed.map((pt, j) => (
+                                      <li key={j}>{pt}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Your answer */}
+                        <div
+                          style={{
+                            padding: '10px 14px', borderRadius: '8px',
+                            background: ga.isCorrect
+                              ? 'rgba(16,185,129,0.06)'
+                              : isSubjective
+                                ? 'rgba(245,158,11,0.06)'
+                                : 'rgba(239,68,68,0.06)',
+                            border: ga.isCorrect
+                              ? '1px solid rgba(16,185,129,0.1)'
+                              : isSubjective
+                                ? '1px solid rgba(245,158,11,0.1)'
+                                : '1px solid rgba(239,68,68,0.1)',
+                            fontSize: '0.82rem',
+                          }}
+                        >
+                          <span style={{ color: 'var(--text-muted)' }}>Your answer: </span>
+                          <span
+                            style={{
+                              color: ga.isCorrect ? '#10b981' : isSubjective ? '#fbbf24' : '#ef4444',
+                              fontWeight: '600',
+                              whiteSpace: isSubjective ? 'pre-wrap' : undefined,
+                            }}
+                          >
+                            {ga.userAnswer || '(no answer)'}
+                          </span>
+                        </div>
+
+                        {/* Correct answer / sample answer */}
+                        {(!ga.isCorrect || isSubjective) && ga.correctAnswer && (
+                          <div
+                            style={{
+                              padding: '10px 14px', borderRadius: '8px',
+                              background: 'rgba(16,185,129,0.06)',
+                              border: '1px solid rgba(16,185,129,0.1)',
+                              marginTop: '8px', fontSize: '0.82rem',
+                            }}
+                          >
+                            <span style={{ color: 'var(--text-muted)' }}>
+                              {isSubjective ? 'Sample answer: ' : 'Correct answer: '}
+                            </span>
+                            <span style={{ color: '#10b981', fontWeight: '600', whiteSpace: isSubjective ? 'pre-wrap' : undefined }}>
+                              {ga.correctAnswer}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Explanation */}
+                        {!isSubjective && ga.solution && (
+                          <div
+                            style={{
+                              padding: '10px 14px', borderRadius: '8px',
+                              background: 'rgba(165,180,252,0.04)',
+                              border: '1px solid rgba(165,180,252,0.08)',
+                              marginTop: '8px', fontSize: '0.82rem',
+                              color: 'var(--text-secondary)', lineHeight: '1.6',
+                            }}
+                          >
+                            <span style={{ color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
+                              💡 Explanation
+                            </span>
+                            {ga.solution}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          );
+        })()}
 
         {/* ── Focus Topics ────────────────────────────────── */}
         {results.focusTopics && results.focusTopics.length > 0 && (
@@ -642,11 +940,11 @@ export default function ResultsPage({
               background: 'linear-gradient(90deg, #6366f1, #06b6d4, #10b981)',
             }}
           />
-          <MessageCircle size={28} color="#a5b4fc" style={{ margin: '0 auto 0.75rem' }} />
+          <MessageCircle size={28} color="var(--text-accent)" style={{ margin: '0 auto 0.75rem' }} />
           <h3 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '0.5rem' }}>
             Want Personalized Mentorship?
           </h3>
-          <p style={{ color: '#94a3b8', fontSize: '0.88rem', marginBottom: '1.25rem', lineHeight: 1.5 }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '1.25rem', lineHeight: 1.5 }}>
             Get 1-on-1 guidance from experienced data analytics mentors for doubt-clearing, career growth, and interview preparation.
           </p>
           <a
@@ -657,7 +955,7 @@ export default function ResultsPage({
               display: 'inline-flex', alignItems: 'center', gap: '8px',
               padding: '12px 28px', borderRadius: '12px',
               background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
-              color: 'white', fontWeight: '700', fontSize: '0.95rem',
+              color: 'var(--text-primary)', fontWeight: '700', fontSize: '0.95rem',
               textDecoration: 'none', boxShadow: '0 4px 20px rgba(99, 102, 241, 0.3)',
               transition: 'transform 0.2s',
             }}
@@ -721,7 +1019,7 @@ export default function ResultsPage({
               borderRadius: '12px',
               border: '1px solid rgba(255,255,255,0.08)',
               background: 'rgba(255,255,255,0.02)',
-              color: 'white',
+              color: 'var(--text-primary)',
               cursor: 'pointer',
               fontWeight: '600',
               display: 'flex',

@@ -1,10 +1,15 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { ArrowRight, Play } from 'lucide-react';
+import { ArrowRight, Play, LayoutDashboard } from 'lucide-react';
 import Link from 'next/link';
 
-export default function HeroSection() {
+interface HeroSectionProps {
+    isLoggedIn?: boolean;
+    isLoading?: boolean;
+}
+
+export default function HeroSection({ isLoggedIn = false, isLoading = false }: HeroSectionProps) {
     return (
         <section
             style={{
@@ -29,7 +34,7 @@ export default function HeroSection() {
                     background: 'rgba(99, 102, 241, 0.1)',
                     border: '1px solid rgba(99, 102, 241, 0.2)',
                     fontSize: '0.85rem',
-                    color: '#a5b4fc',
+                    color: 'var(--text-accent)',
                     marginBottom: '2rem',
                 }}
             >
@@ -69,7 +74,7 @@ export default function HeroSection() {
                 transition={{ delay: 0.35 }}
                 style={{
                     fontSize: '1.2rem',
-                    color: '#a5b4fc',
+                    color: 'var(--text-secondary)',
                     marginBottom: '2.5rem',
                     maxWidth: '680px',
                     margin: '0 auto 2.5rem',
@@ -85,35 +90,51 @@ export default function HeroSection() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5 }}
-                style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}
+                style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', minHeight: '56px' }}
             >
-                <Link
-                    href="/get-started"
-                    className="btn-primary"
-                    style={{
-                        fontSize: '1.1rem',
-                        padding: '16px 36px',
-                        textDecoration: 'none',
-                    }}
-                >
-                    Start Free Quiz <ArrowRight size={20} />
-                </Link>
+                {isLoading ? (
+                    <div style={{ padding: '16px 36px', height: '56px', borderRadius: '8px', background: 'rgba(99,102,241,0.1)', minWidth: '180px' }} />
+                ) : isLoggedIn ? (
+                    <Link
+                        href="/dashboard"
+                        className="btn-primary"
+                        style={{
+                            fontSize: '1.1rem',
+                            padding: '16px 36px',
+                            textDecoration: 'none',
+                        }}
+                    >
+                        Go to Dashboard <LayoutDashboard size={20} />
+                    </Link>
+                ) : (
+                    <Link
+                        href="/get-started"
+                        className="btn-primary"
+                        style={{
+                            fontSize: '1.1rem',
+                            padding: '16px 36px',
+                            textDecoration: 'none',
+                        }}
+                    >
+                        Start Free Quiz <ArrowRight size={20} />
+                    </Link>
+                )}
                 <Link
                     href="#how-it-works"
                     style={{
                         padding: '16px 36px',
                         borderRadius: '8px',
-                        border: '1px solid rgba(99, 102, 241, 0.3)',
-                        color: 'white',
+                        border: '1px solid var(--border-color)',
+                        color: 'var(--text-primary)',
                         textDecoration: 'none',
                         fontWeight: '600',
-                        background: 'rgba(255, 255, 255, 0.03)',
+                        background: 'var(--subtle-bg)',
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: '8px',
                     }}
                 >
-                    <Play size={18} fill="#a5b4fc" color="#a5b4fc" /> See How It Works
+                    <Play size={18} fill="var(--text-accent)" color="var(--text-accent)" /> See How It Works
                 </Link>
             </motion.div>
 
@@ -137,7 +158,7 @@ export default function HeroSection() {
                 ].map((stat, i) => (
                     <div key={i}>
                         <div style={{ fontSize: '1.75rem', fontWeight: '800' }}>{stat.value}</div>
-                        <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>{stat.label}</div>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{stat.label}</div>
                     </div>
                 ))}
             </motion.div>

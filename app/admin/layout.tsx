@@ -12,14 +12,17 @@ import {
   LogOut,
   IndianRupee,
   QrCode,
+  MessageCircle
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import ThemeToggle from '@/components/layout/ThemeToggle';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [pendingPayments, setPendingPayments] = useState(0);
+  const [unreadFeedback, setUnreadFeedback] = useState(0);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   // Security check: only allow logged in ADMIN from Admin table
@@ -45,15 +48,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       .catch(() => router.push('/admin/login'));
   }, [router, pathname]);
 
-  // Poll pending payments count to show badge
+  // Poll pending payments and unread feedback
   useEffect(() => {
     if (!isAdmin) return;
-    const load = () =>
+    const interval = setInterval(() => {
       fetch('/api/admin/payments?status=pending')
         .then((r) => r.json())
         .then((d) => setPendingPayments((d.requests ?? []).length))
         .catch(() => { });
-    load();
+        
+      fetch('/api/admin/feedback?status=open')
+        .then((r) => r.json())
+        .then((d) => setUnreadFeedback(d.unreadCount ?? 0))
+        .catch(() => { });
+    }, 5000);
+    
+    // Initial fetch
+    fetch('/api/admin/payments?status=pending').then(r => r.json()).then(d => setPendingPayments((d.requests ?? []).length)).catch(()=>{});
+    fetch('/api/admin/feedback?status=open').then(r => r.json()).then(d => setUnreadFeedback(d.unreadCount ?? 0)).catch(()=>{});
+
+    return () => clearInterval(interval);
   }, [pathname, isAdmin]);
 
   const handleLogout = async () => {
@@ -63,8 +77,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   if (isAdmin === null) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0f0f23' }}>
-        <Zap size={32} color="#6366f1" style={{ animation: 'pulse 1.5s infinite' }} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg-primary)' }}>
+        <Zap size={32} color="var(--text-accent)" style={{ animation: 'pulse 1.5s infinite' }} />
       </div>
     );
   }
@@ -79,6 +93,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       icon: <IndianRupee size={20} />,
       badge: pendingPayments > 0 ? pendingPayments : undefined,
     },
+    {
+      name: 'Feedback',
+      href: '/admin/feedback',
+      icon: <MessageCircle size={20} />,
+      badge: unreadFeedback > 0 ? unreadFeedback : undefined,
+    },
     { name: 'Bulk Upload', href: '/admin/upload', icon: <Upload size={20} /> },
     { name: 'QR & Settings', href: '/admin/settings', icon: <QrCode size={20} /> },
   ];
@@ -89,13 +109,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#0f0f23' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-primary)' }}>
       {/* Sidebar */}
       <aside
         style={{
           width: '260px',
-          background: 'rgba(30, 30, 60, 0.5)',
-          borderRight: '1px solid rgba(99, 102, 241, 0.1)',
+          background: 'var(--surface)',
+          borderRight: '1px solid var(--border-color)',
           padding: '2rem 1.5rem',
           display: 'flex',
           flexDirection: 'column',
@@ -113,7 +133,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             marginBottom: '3rem',
           }}
         >
-          <BrandLogo iconSize={28} textSize="1.5rem" />
+          <BrandLogo height={36} showSlogan={false} />
           <span
             style={{
               fontSize: '0.7rem',
@@ -147,8 +167,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   padding: '0.75rem 1rem',
                   borderRadius: '8px',
                   textDecoration: 'none',
-                  color: isActive ? 'white' : '#a5b4fc',
-                  background: isActive ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+                  color: isActive ? 'white' : 'var(--text-muted)',
+                  background: isActive ? 'var(--text-accent)' : 'transparent',
                   fontWeight: isActive ? '600' : '400',
                   transition: 'all 0.2s ease',
                   position: 'relative',
@@ -177,24 +197,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             );
           })}
         </nav>
-
-        <button
-          onClick={handleLogout}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-            padding: '0.75rem 1rem',
-            borderRadius: '8px',
-            border: 'none',
-            background: 'transparent',
-            color: '#ef4444',
-            cursor: 'pointer',
-            marginTop: 'auto',
-          }}
-        >
-          <LogOut size={20} /> Logout
-        </button>
+        <div style={{ marginTop: 'auto', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <ThemeToggle />
+          <button
+            onClick={handleLogout}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              padding: '0.75rem 1rem',
+              borderRadius: '8px',
+              border: 'none',
+              background: 'transparent',
+              color: '#ef4444',
+              cursor: 'pointer',
+            }}
+          >
+            <LogOut size={20} /> Logout
+          </button>
+        </div>
       </aside>
 
       {/* Main Content */}

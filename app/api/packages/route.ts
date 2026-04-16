@@ -1,42 +1,20 @@
 import { NextResponse } from 'next/server';
+import { PLANS } from '@/lib/plans';
 
 /**
  * GET /api/packages
  *
- * Alias for /api/subscriptions/checkout. Returns subscription tiers.
+ * Returns subscription tiers (sourced from lib/plans.ts — single source of truth).
  */
 export async function GET() {
-  const tiers = [
-    {
-      id: 'FREE',
-      name: 'Free',
-      price: 0,
-      quizzes: 1,
-      features: ['1 teaser quiz', 'MCQs only'],
-    },
-    {
-      id: 'BASIC',
-      name: 'Basic',
-      price: 99,
-      quizzes: 3,
-      features: ['3 quizzes', 'MCQs only', 'Basic reports'],
-    },
-    {
-      id: 'PRO',
-      name: 'Pro',
-      price: 299,
-      quizzes: 10,
-      features: ['10 quizzes', 'Full hands-on', 'AI reports', 'Leaderboard'],
-      isPopular: true,
-    },
-    {
-      id: 'ELITE',
-      name: 'Elite',
-      price: 499,
-      quizzes: 20,
-      features: ['20 quizzes', 'Everything in Pro', 'Mentorship', 'Unlimited retries'],
-    },
-  ];
+  const tiers = PLANS.map((p) => ({
+    id: p.id,
+    name: p.name,
+    price: p.price,
+    quizzes: p.quizzes,
+    isPopular: p.isPopular,
+    features: p.features.filter((f) => f.available).map((f) => f.label),
+  }));
 
   return NextResponse.json(tiers);
 }

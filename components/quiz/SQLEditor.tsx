@@ -448,9 +448,10 @@ export default function SQLEditor({
                             style={{
                                 padding: '4px 12px',
                                 borderRadius: '20px',
-                                background: 'rgba(255,255,255,0.04)',
+                                background: 'var(--subtle-bg)',
+                                border: '1px solid var(--border-color)',
                                 fontSize: '0.7rem',
-                                color: '#6b7280',
+                                color: 'var(--text-muted)',
                             }}
                         >
                             Difficulty {question.difficulty}/10
@@ -462,7 +463,7 @@ export default function SQLEditor({
                             fontSize: '1.2rem',
                             fontWeight: '600',
                             lineHeight: '1.6',
-                            color: '#f1f5f9',
+                            color: 'var(--text-primary)',
                         }}
                     >
                         {question.content}
@@ -487,13 +488,13 @@ export default function SQLEditor({
                             alignItems: 'center',
                             justifyContent: 'space-between',
                             padding: '8px 14px',
-                            background: 'rgba(45, 45, 45, 0.8)',
-                            borderBottom: '1px solid rgba(255,255,255,0.06)',
+                            background: 'var(--subtle-bg)',
+                            borderBottom: '1px solid var(--border-color)',
                         }}
                     >
                         <span
                             style={{
-                                color: '#6b7280',
+                                color: 'var(--text-primary)',
                                 fontSize: '0.75rem',
                                 fontWeight: '500',
                                 display: 'flex',
@@ -507,7 +508,7 @@ export default function SQLEditor({
                                     fontSize: '0.65rem',
                                     padding: '2px 8px',
                                     background: 'rgba(99, 102, 241, 0.1)',
-                                    color: '#a5b4fc',
+                                    color: 'var(--primary)',
                                     borderRadius: '12px',
                                     border: '1px solid rgba(99, 102, 241, 0.2)',
                                 }}
@@ -526,9 +527,9 @@ export default function SQLEditor({
                                     gap: '4px',
                                     padding: '4px 12px',
                                     borderRadius: '6px',
-                                    border: '1px solid rgba(255,255,255,0.08)',
-                                    background: 'rgba(255,255,255,0.03)',
-                                    color: '#6b7280',
+                                    border: '1px solid var(--border-color)',
+                                    background: 'var(--background)',
+                                    color: 'var(--text-primary)',
                                     cursor: disabled ? 'default' : 'pointer',
                                     fontSize: '0.8rem',
                                 }}
@@ -594,7 +595,7 @@ export default function SQLEditor({
                     style={{
                         borderRadius: '12px',
                         overflow: 'hidden',
-                        border: '1px solid rgba(255,255,255,0.08)',
+                        border: '1px solid var(--border-color)',
                         marginBottom: '1rem',
                         minHeight: '80px',
                     }}
@@ -602,19 +603,19 @@ export default function SQLEditor({
                     <div
                         style={{
                             padding: '8px 14px',
-                            background: 'rgba(45, 45, 45, 0.5)',
-                            borderBottom: '1px solid rgba(255,255,255,0.06)',
+                            background: 'var(--subtle-bg)',
+                            borderBottom: '1px solid var(--border-color)',
                             display: 'flex',
                             alignItems: 'center',
                             gap: '8px',
                             fontSize: '0.75rem',
                             fontWeight: '500',
-                            color: '#6b7280',
+                            color: 'var(--text-primary)',
                         }}
                     >
                         <Terminal size={13} /> Output
                         {hasExecutedQuery && (
-                            <span style={{ marginLeft: 'auto', color: '#4b5563' }}>
+                            <span style={{ marginLeft: 'auto', color: 'var(--text-muted)' }}>
                                 {queryResult.length} row{queryResult.length !== 1 ? 's' : ''}
                             </span>
                         )}
@@ -622,7 +623,7 @@ export default function SQLEditor({
 
                     <div
                         style={{
-                            background: 'rgba(30, 30, 30, 0.6)',
+                            background: 'var(--background)',
                             padding: error ? '1rem' : 0,
                             maxHeight: '250px',
                             overflowY: 'auto',
@@ -658,14 +659,14 @@ export default function SQLEditor({
                                                     key={col}
                                                     style={{
                                                         padding: '8px 12px',
-                                                        borderBottom: '1px solid rgba(255,255,255,0.1)',
+                                                        borderBottom: '1px solid var(--border-color)',
                                                         textAlign: 'left',
-                                                        color: '#a5b4fc',
+                                                        color: 'var(--primary)',
                                                         fontWeight: '700',
                                                         fontSize: '0.75rem',
                                                         position: 'sticky',
                                                         top: 0,
-                                                        background: 'rgba(30, 30, 50, 0.95)',
+                                                        background: 'var(--subtle-bg)',
                                                     }}
                                                 >
                                                     {col}
@@ -681,7 +682,7 @@ export default function SQLEditor({
                                                     background:
                                                         ri % 2 === 0
                                                             ? 'transparent'
-                                                            : 'rgba(255,255,255,0.015)',
+                                                            : 'var(--subtle-bg)',
                                                 }}
                                             >
                                                 {columns.map((col) => (
@@ -689,12 +690,12 @@ export default function SQLEditor({
                                                         key={col}
                                                         style={{
                                                             padding: '6px 12px',
-                                                            borderBottom: '1px solid rgba(255,255,255,0.04)',
-                                                            color: '#cbd5e1',
+                                                            borderBottom: '1px solid var(--border-color)',
+                                                            color: 'var(--text-primary)',
                                                         }}
                                                     >
                                                         {row[col] === null ? (
-                                                            <span style={{ color: '#4b5563', fontStyle: 'italic' }}>
+                                                            <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
                                                                 NULL
                                                             </span>
                                                         ) : (
@@ -712,7 +713,7 @@ export default function SQLEditor({
                                 style={{
                                     padding: '2rem',
                                     textAlign: 'center',
-                                    color: '#4b5563',
+                                    color: 'var(--text-muted)',
                                     fontSize: '0.85rem',
                                 }}
                             >
@@ -723,7 +724,7 @@ export default function SQLEditor({
                                 style={{
                                     padding: '2rem',
                                     textAlign: 'center',
-                                    color: '#4b5563',
+                                    color: 'var(--text-muted)',
                                     fontSize: '0.85rem',
                                 }}
                             >
@@ -787,25 +788,24 @@ export default function SQLEditor({
                 )}
             </div>
 
-            {/* Right Column (Sidebar for Schema/Data) */}
             {((question.sampleData && question.sampleData.length > 0) || question.setupSQL) && (
                 <div style={{ flex: '1 1 30%', minWidth: '250px' }}>
                     <div style={{
                         position: 'sticky',
                         top: '1.5rem',
-                        background: 'rgba(30, 30, 40, 0.4)',
-                        border: '1px solid rgba(255,255,255,0.05)',
+                        background: 'var(--subtle-bg)',
+                        border: '1px solid var(--border-color)',
                         borderRadius: '12px',
                         overflow: 'hidden'
                     }}>
                         <div style={{
                             padding: '12px 16px',
-                            background: 'rgba(45, 45, 55, 0.8)',
-                            borderBottom: '1px solid rgba(255,255,255,0.05)',
+                            background: 'var(--subtle-bg)',
+                            borderBottom: '1px solid var(--border-color)',
                             display: 'flex',
                             alignItems: 'center',
                             gap: '8px',
-                            color: '#a5b4fc',
+                            color: 'var(--text-primary)',
                             fontWeight: '600',
                             fontSize: '0.85rem'
                         }}>
@@ -815,18 +815,18 @@ export default function SQLEditor({
                         <div style={{ padding: '16px', maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
                             {question.setupSQL && (
                                 <div style={{ marginBottom: '1.5rem' }}>
-                                    <div style={{ color: '#94a3b8', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '8px' }}>
+                                    <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '8px' }}>
                                         Schema (Setup SQL)
                                     </div>
                                     <div style={{
                                         padding: '12px',
-                                        background: 'rgba(0,0,0,0.3)',
+                                        background: 'var(--background)',
                                         borderRadius: '8px',
                                         fontSize: '0.7rem',
-                                        color: '#cbd5e1',
+                                        color: 'var(--text-primary)',
                                         fontFamily: 'monospace',
                                         whiteSpace: 'pre-wrap',
-                                        border: '1px solid rgba(255,255,255,0.03)'
+                                        border: '1px solid var(--border-color)'
                                     }}>
                                         {question.setupSQL}
                                     </div>
@@ -835,7 +835,7 @@ export default function SQLEditor({
 
                             {question.sampleData && question.sampleData.length > 0 && (
                                 <div>
-                                    <div style={{ color: '#94a3b8', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '8px' }}>
+                                    <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '8px' }}>
                                         Sample Data (3-5 Rows)
                                     </div>
                                     {question.sampleData.map((table) => (
@@ -843,15 +843,15 @@ export default function SQLEditor({
                                             marginBottom: '1rem',
                                             borderRadius: '8px',
                                             overflow: 'hidden',
-                                            border: '1px solid rgba(255,255,255,0.05)'
+                                            border: '1px solid var(--border-color)'
                                         }}>
                                             <div style={{
                                                 padding: '6px 12px',
-                                                background: 'rgba(99, 102, 241, 0.05)',
+                                                background: 'var(--subtle-bg)',
                                                 fontSize: '0.75rem',
                                                 fontWeight: '600',
-                                                color: '#818cf8',
-                                                borderBottom: '1px solid rgba(255,255,255,0.05)'
+                                                color: 'var(--primary)',
+                                                borderBottom: '1px solid var(--border-color)'
                                             }}>
                                                 Table: {table.tableName}
                                             </div>
@@ -863,22 +863,22 @@ export default function SQLEditor({
                                                                 <th key={col} style={{
                                                                     padding: '4px 8px',
                                                                     textAlign: 'left',
-                                                                    color: '#6b7280',
-                                                                    borderBottom: '1px solid rgba(255,255,255,0.05)'
+                                                                    color: 'var(--text-muted)',
+                                                                    borderBottom: '1px solid var(--border-color)'
                                                                 }}>{col}</th>
                                                             ))}
                                                         </tr>
                                                     </thead>
                                                     <tbody>
                                                         {table.rows.map((row, ri) => (
-                                                            <tr key={ri} style={{ background: ri % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)' }}>
+                                                            <tr key={ri} style={{ background: ri % 2 === 0 ? 'transparent' : 'var(--subtle-bg)' }}>
                                                                 {Object.values(row).map((val: any, ci) => (
                                                                     <td key={ci} style={{
                                                                         padding: '4px 8px',
-                                                                        color: '#cbd5e1',
-                                                                        borderBottom: '1px solid rgba(255,255,255,0.02)'
+                                                                        color: 'var(--text-primary)',
+                                                                        borderBottom: '1px solid var(--border-color)'
                                                                     }}>
-                                                                        {val === null ? <span style={{ color: '#4b5563' }}>NULL</span> : String(val)}
+                                                                        {val === null ? <span style={{ color: 'var(--text-muted)' }}>NULL</span> : String(val)}
                                                                     </td>
                                                                 ))}
                                                             </tr>

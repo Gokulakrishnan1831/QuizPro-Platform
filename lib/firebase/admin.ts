@@ -29,9 +29,23 @@ function getServiceAccount(): ServiceAccount {
     );
 }
 
+function getStorageBucket(): string {
+    if (process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET) {
+        return process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+    }
+    // Derive from project ID
+    const projectId =
+        process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
+        (getServiceAccount() as any).project_id;
+    return `${projectId}.appspot.com`;
+}
+
 const app =
     getApps().length === 0
-        ? initializeApp({ credential: cert(getServiceAccount()) })
+        ? initializeApp({
+              credential: cert(getServiceAccount()),
+              storageBucket: getStorageBucket(),
+          })
         : getApps()[0]!;
 
 /** Firestore database instance */

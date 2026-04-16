@@ -14,12 +14,6 @@ const CTA_MESSAGES = [
 
 const MENTORSHIP_URL = 'https://mentorship-platform-ve5o.onrender.com/';
 
-/**
- * Floating CTA banner for mentorship advertisement.
- * - Appears every 30 seconds with a smooth animation
- * - User can dismiss it; it reappears after 30s with a rotated message
- * - Designed as a non-intrusive FAB that expands to show content
- */
 export default function MentorshipCTA() {
     const [visible, setVisible] = useState(false);
     const [expanded, setExpanded] = useState(false);
@@ -29,19 +23,15 @@ export default function MentorshipCTA() {
     const showBanner = useCallback(() => {
         setDismissed(false);
         setVisible(true);
-        // Auto-expand after a brief delay
         setTimeout(() => setExpanded(true), 400);
     }, []);
 
     useEffect(() => {
-        // Show after first 15 seconds, then every 30 seconds
         const initialTimer = setTimeout(showBanner, 15000);
-
         const interval = setInterval(() => {
             setMessageIndex((prev) => (prev + 1) % CTA_MESSAGES.length);
             showBanner();
         }, 30000);
-
         return () => {
             clearTimeout(initialTimer);
             clearInterval(interval);
@@ -80,17 +70,16 @@ export default function MentorshipCTA() {
                             initial={{ opacity: 0, scale: 0.9 }}
                             animate={{ opacity: 1, scale: 1 }}
                             style={{
-                                background: 'linear-gradient(135deg, rgba(15, 15, 35, 0.98), rgba(30, 20, 60, 0.98))',
+                                background: 'var(--dropdown-bg)',
                                 backdropFilter: 'blur(20px)',
-                                border: '1px solid rgba(99, 102, 241, 0.3)',
+                                border: '1px solid var(--border-color)',
                                 borderRadius: '20px',
                                 padding: '1.25rem 1.5rem',
-                                boxShadow: '0 8px 40px rgba(99, 102, 241, 0.2), 0 0 80px rgba(99, 102, 241, 0.05)',
+                                boxShadow: 'var(--shadow-lg)',
                                 position: 'relative',
                                 overflow: 'hidden',
                             }}
                         >
-                            {/* Gradient shimmer effect */}
                             <div
                                 style={{
                                     position: 'absolute',
@@ -104,16 +93,15 @@ export default function MentorshipCTA() {
                                 }}
                             />
 
-                            {/* Close button */}
                             <button
                                 onClick={handleDismiss}
                                 style={{
                                     position: 'absolute',
                                     top: '10px',
                                     right: '10px',
-                                    background: 'rgba(255,255,255,0.05)',
+                                    background: 'var(--input-bg)',
                                     border: 'none',
-                                    color: '#6b7280',
+                                    color: 'var(--text-muted)',
                                     cursor: 'pointer',
                                     borderRadius: '8px',
                                     width: '28px',
@@ -123,20 +111,19 @@ export default function MentorshipCTA() {
                                     justifyContent: 'center',
                                     transition: 'color 0.2s',
                                 }}
-                                onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
-                                onMouseLeave={(e) => (e.currentTarget.style.color = '#6b7280')}
+                                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--error)')}
+                                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
                             >
                                 <X size={14} />
                             </button>
 
-                            {/* Content */}
                             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '1rem' }}>
                                 <div
                                     style={{
                                         width: '44px',
                                         height: '44px',
                                         borderRadius: '12px',
-                                        background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(6, 182, 212, 0.2))',
+                                        background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(6, 182, 212, 0.1))',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
@@ -162,7 +149,7 @@ export default function MentorshipCTA() {
                                     >
                                         <Sparkles size={11} /> Mentorship
                                     </div>
-                                    <div style={{ color: '#e2e8f0', fontSize: '0.92rem', fontWeight: '600', lineHeight: 1.4 }}>
+                                    <div style={{ color: 'var(--text-primary)', fontSize: '0.92rem', fontWeight: '600', lineHeight: 1.4 }}>
                                         {currentMessage.text}
                                     </div>
                                 </div>
@@ -203,8 +190,6 @@ export default function MentorshipCTA() {
                                 Connect with a Mentor
                                 <ArrowRight size={14} />
                             </a>
-
-                            {/* shimmer keyframe */}
                             <style>{`
                 @keyframes shimmer {
                   0% { background-position: -200% 0; }
@@ -213,7 +198,6 @@ export default function MentorshipCTA() {
               `}</style>
                         </motion.div>
                     ) : (
-                        /* Collapsed FAB */
                         <motion.button
                             onClick={() => setExpanded(true)}
                             whileHover={{ scale: 1.1 }}

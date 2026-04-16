@@ -56,7 +56,14 @@ export async function GET(request: Request) {
         persona: u.persona,
         subscriptionTier: u.subscriptionTier,
         quizzesRemaining: u.quizzesRemaining,
-        createdAt: u.createdAt,
+        profilePhotoUrl: (u as any).profilePhotoUrl ?? null,
+        headline: (u as any).headline ?? null,
+        profileCompletionPct: (u as any).profileCompletionPct ?? 0,
+        createdAt: u.createdAt?._seconds 
+          ? new Date(u.createdAt._seconds * 1000).toISOString() 
+          : u.createdAt?.toMillis?.() 
+            ? new Date(u.createdAt.toMillis()).toISOString() 
+            : new Date(u.createdAt).toISOString(),
       }));
 
     // Recent attempts (newest 10)
@@ -75,12 +82,19 @@ export async function GET(request: Request) {
       };
     });
 
+    // Average profile completion
+    const completionValues = allUsers.map(u => (u as any).profileCompletionPct ?? 0);
+    const avgProfileCompletion = completionValues.length > 0
+      ? Math.round(completionValues.reduce((s, v) => s + v, 0) / completionValues.length)
+      : 0;
+
     return NextResponse.json({
       stats: {
         totalUsers: userCount,
         totalQuestions: questionCount,
         totalAttempts: attemptCount,
         estimatedRevenue,
+        avgProfileCompletion,
       },
       recentUsers,
       recentAttempts,

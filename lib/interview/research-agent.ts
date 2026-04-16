@@ -10,6 +10,7 @@ import { groqQuizCompletion } from '@/lib/ai/groq-client';
 import { postProcessQuestions } from '@/lib/ai/post-process';
 import type { RankedInterviewPattern } from './retrieval';
 import { buildInterviewGroundingContext } from './retrieval';
+import { searchTavilyCompanyQuestions } from './tavily-client';
 
 type Skill = 'SQL' | 'EXCEL' | 'POWERBI';
 
@@ -26,6 +27,7 @@ interface ResearchParams {
     avoidQuestionFingerprints?: string[];
     difficultyFloor?: number;
     difficultyCeiling?: number;
+    tavilyContext?: string;
 }
 
 /**
@@ -47,6 +49,7 @@ function buildResearchPrompt(params: ResearchParams): string {
         avoidQuestionFingerprints = [],
         difficultyFloor,
         difficultyCeiling,
+        tavilyContext,
     } = params;
 
     const groundingContext =
@@ -93,6 +96,7 @@ for ${role.display} positions. Draw from your training data knowledge of intervi
 patterns commonly reported on Glassdoor, AmbitionBox, and LinkedIn for ${company}.
 
 ${groundingContext ? `\n${groundingContext}\n` : ''}
+${tavilyContext ? `\n${tavilyContext}\n` : ''}
 ${avoidQuestionFingerprints.length > 0
             ? `\n---- PREVIOUSLY SERVED QUESTION SIGNATURES (DO NOT REPEAT) ----
 ${avoidQuestionFingerprints.slice(0, 60).map((v, i) => `${i + 1}. ${v}`).join('\n')}
@@ -190,7 +194,19 @@ ${hasHandsOn ? `---- SQL HANDS-ON FORMAT ----
 export async function researchAndGenerateQuestions(
     params: ResearchParams
 ): Promise<any[]> {
-    const prompt = buildResearchPrompt(params);
+    let tavilyContext = '';
+    // If no existing patterns were provided (meaning we missed the fast cache), hit Tavily
+    if (!params.existingPatterns || params.existingPatterns.length === 0) {
+        const tavilyResults = await searchTavilyCompanyQuestions(params.company, params.role.display);
+        if (tavilyResults.length > 0) {
+            tavilyContext = `\n---- RECENT EXTERNAL INTERVIEW DATA (HIGH PRIORITY) ----\nUse the following real-world search snippets from Glassdoor/AmbitionBox to extract exact questions asked at ${params.company}. Format them into the Quiz format requested.\n`;
+            tavilyResults.forEach((res, idx) => {
+                tavilyContext += `\n[Snippet ${idx + 1} from ${res.url}]:\n${res.content}\n`;
+            });
+        }
+    }
+
+    const prompt = buildResearchPrompt({ ...params, tavilyContext });
 
     const raw = await groqQuizCompletion(prompt);
     const cleaned = raw

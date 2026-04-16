@@ -63,9 +63,10 @@ export default function PowerBIFillBlankQuestion({
           style={{
             padding: '4px 12px',
             borderRadius: '20px',
-            background: 'rgba(255,255,255,0.04)',
+            background: 'var(--subtle-bg)',
+            border: '1px solid var(--border-color)',
             fontSize: '0.7rem',
-            color: '#6b7280',
+            color: 'var(--text-muted)',
           }}
         >
           Difficulty {question.difficulty}/10
@@ -78,7 +79,7 @@ export default function PowerBIFillBlankQuestion({
           fontWeight: '600',
           lineHeight: '1.6',
           marginBottom: '1.25rem',
-          color: '#f1f5f9',
+          color: 'var(--text-primary)',
         }}
       >
         {question.content}
@@ -88,7 +89,7 @@ export default function PowerBIFillBlankQuestion({
         style={{
           display: 'block',
           fontSize: '0.8rem',
-          color: '#6b7280',
+          color: 'var(--text-muted)',
           marginBottom: '0.5rem',
         }}
       >
@@ -103,9 +104,9 @@ export default function PowerBIFillBlankQuestion({
           width: '100%',
           padding: '12px 14px',
           borderRadius: '10px',
-          border: '1px solid rgba(255,255,255,0.1)',
-          background: 'rgba(255,255,255,0.03)',
-          color: 'white',
+          border: '1px solid var(--border-color)',
+          background: 'var(--background)',
+          color: 'var(--text-primary)',
           outline: 'none',
           fontSize: '0.95rem',
           marginBottom: '0.5rem',
@@ -117,7 +118,7 @@ export default function PowerBIFillBlankQuestion({
           Answer is case-sensitive.
         </p>
       ) : (
-        <p style={{ color: '#6b7280', fontSize: '0.75rem', marginTop: 0 }}>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: 0 }}>
           Answer is not case-sensitive.
         </p>
       )}

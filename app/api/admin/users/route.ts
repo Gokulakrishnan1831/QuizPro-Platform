@@ -57,7 +57,11 @@ export async function GET(request: Request) {
                     subscriptionTier: u.subscriptionTier,
                     quizzesRemaining: u.quizzesRemaining,
                     experienceYears: u.experienceYears,
-                    createdAt: u.createdAt,
+                    createdAt: u.createdAt?._seconds 
+                      ? new Date(u.createdAt._seconds * 1000).toISOString() 
+                      : u.createdAt?.toMillis?.() 
+                        ? new Date(u.createdAt.toMillis()).toISOString() 
+                        : new Date(u.createdAt).toISOString(),
                     quizzesTaken: attempts.length,
                 };
             })

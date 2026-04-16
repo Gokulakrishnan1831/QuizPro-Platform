@@ -1,93 +1,162 @@
-const DEFAULT_OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-5.3';
-let lastResolvedModel = DEFAULT_OPENAI_MODEL;
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'google/gemma-4-26b-a4b-it:free';
+const GROQ_FALLBACK_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 
-function getOpenAiApiKey(): string {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) {
-    throw new Error('OPENAI_API_KEY is not configured');
-  }
-  return key;
+let lastResolvedModel = OPENROUTER_MODEL;
+
+function getGroqKeys(): string[] {
+  const keysStr = process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY;
+  return keysStr ? keysStr.split(',').map(k => k.trim()).filter(Boolean) : [];
 }
 
-function parseOpenAiError(status: number, rawText: string): string {
-  try {
-    const parsed = JSON.parse(rawText) as { error?: { message?: string } };
-    return parsed.error?.message || rawText;
-  } catch {
-    return rawText;
-  }
-}
-
-async function openAiChatCompletion(params: {
-  prompt: string;
-  systemInstruction?: string;
-  temperature: number;
-  maxOutputTokens: number;
-}): Promise<string> {
-  const apiKey = getOpenAiApiKey();
-  const model = DEFAULT_OPENAI_MODEL;
-
-  const messages: Array<{ role: 'system' | 'user'; content: string }> = [];
-  if (params.systemInstruction) {
-    messages.push({ role: 'system', content: params.systemInstruction });
-  }
-  messages.push({ role: 'user', content: params.prompt });
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: params.temperature,
-      max_completion_tokens: params.maxOutputTokens,
-    }),
-  });
-
-  if (!response.ok) {
-    const rawText = await response.text();
-    const message = parseOpenAiError(response.status, rawText);
-    throw new Error(`OpenAI API error ${response.status}: ${message}`);
-  }
-
-  const data = (await response.json()) as {
-    choices?: Array<{
-      message?: {
-        content?: string | Array<{ type?: string; text?: string }>;
-      };
-    }>;
-  };
-
-  const content = data.choices?.[0]?.message?.content;
-  const text = Array.isArray(content)
-    ? content
-      .map((part) => (typeof part.text === 'string' ? part.text : ''))
-      .join('')
-    : (content || '');
-
-  if (!text) {
-    throw new Error('OpenAI returned an empty response');
-  }
-
-  lastResolvedModel = model;
-  return text;
-}
-
+/**
+ * Primary AI completion using OpenRouter, with Groq auto-failover and rotation.
+ */
 export async function aiCompletion(params: {
   prompt: string;
   systemInstruction?: string;
   temperature?: number;
   maxOutputTokens?: number;
 }): Promise<string> {
-  return openAiChatCompletion({
-    prompt: params.prompt,
-    systemInstruction: params.systemInstruction,
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  const groqKeys = getGroqKeys();
+  
+  if (!openRouterKey && groqKeys.length === 0) {
+    throw new Error('No AI API keys configured (Missing OPENROUTER_API_KEY or GROQ_API_KEY)');
+  }
+
+  const messages: any[] = [];
+  if (params.systemInstruction) {
+    messages.push({ role: 'system', content: params.systemInstruction });
+  }
+  messages.push({ role: 'user', content: params.prompt });
+
+  const payload = {
+    messages,
     temperature: params.temperature ?? 0.7,
-    maxOutputTokens: params.maxOutputTokens ?? 1024,
-  });
+    max_tokens: params.maxOutputTokens ?? 1024,
+  };
+
+  let lastError: Error | null = null;
+
+  // 1. Try OpenRouter Primary
+  if (openRouterKey) {
+    const maxOpenRouterAttempts = 3;
+
+    for (let i = 0; i < maxOpenRouterAttempts; i++) {
+        try {
+            const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${openRouterKey}`,
+                  'HTTP-Referer': 'https://preplytics.com', // Optional but recommended by OpenRouter
+                  'X-Title': 'Preplytics AI Quiz', // Optional
+                },
+                body: JSON.stringify({
+                  ...payload,
+                  model: OPENROUTER_MODEL,
+                }),
+            });
+
+            if (!response.ok) {
+                const rawText = await response.text();
+                if (response.status === 429 || response.status === 503) {
+                    throw new Error(`OpenRouter rate limit/server error (${response.status}): ${rawText}`);
+                }
+                throw new Error(`OpenRouter API error ${response.status}: ${rawText}`);
+            }
+
+            const data = await response.json();
+            const text = data.choices?.[0]?.message?.content;
+            if (!text) {
+                throw new Error('OpenRouter returned an empty response');
+            }
+
+            lastResolvedModel = OPENROUTER_MODEL;
+            return text;
+        } catch (err: any) {
+            lastError = err;
+            if (!err.message.includes('429') && !err.message.includes('503')) {
+                console.warn(`⚠ OpenRouter failed (fatal): ${err.message}. Falling back to Groq...`);
+                break; // Break if structural
+            }
+            
+            console.warn(`⚠ OpenRouter hit ${err.message.includes('429') ? '429' : '503'}. Attempt ${i + 1}/${maxOpenRouterAttempts}.`);
+            if (i < maxOpenRouterAttempts - 1) {
+                const backoffBase = Math.min(Math.pow(2, i) * 3000, 15000); // 3s, 6s...
+                const delayMs = backoffBase + Math.random() * 1000;
+                console.log(`Waiting ${Math.round(delayMs)}ms before OpenRouter retry...`);
+                await new Promise((res) => setTimeout(res, delayMs));
+            } else {
+                console.warn(`⚠ OpenRouter exhausted retries. Falling back to Groq...`);
+            }
+        }
+    }
+  }
+
+  // 2. Try Groq Fallback with retry/rotation if multiple keys
+  if (groqKeys.length > 0) {
+    // Shuffle Groq keys
+    const shuffledKeys = [...groqKeys];
+    for (let i = shuffledKeys.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffledKeys[i], shuffledKeys[j]] = [shuffledKeys[j], shuffledKeys[i]];
+    }
+
+    const maxAttempts = Math.max(shuffledKeys.length * 2, 4);
+
+    for (let i = 0; i < maxAttempts; i++) {
+        const apiKey = shuffledKeys[i % shuffledKeys.length];
+
+        try {
+            const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${apiKey}`,
+                },
+                body: JSON.stringify({
+                  ...payload,
+                  model: GROQ_FALLBACK_MODEL,
+                }),
+            });
+
+            if (!response.ok) {
+                const rawText = await response.text();
+                if (response.status === 429 || response.status === 503) {
+                    throw new Error(`Groq rate limit/server error (${response.status}): ${rawText}`);
+                }
+                throw new Error(`Groq API error ${response.status}: ${rawText}`);
+            }
+
+            const data = await response.json();
+            const text = data.choices?.[0]?.message?.content;
+            if (!text) {
+                throw new Error('Groq returned an empty response');
+            }
+
+            lastResolvedModel = GROQ_FALLBACK_MODEL;
+            if (openRouterKey || i > 0) {
+                console.log(`✅ AI completed via Groq fallback (Attempt ${i + 1})`);
+            }
+            return text;
+        } catch (err: any) {
+            lastError = err;
+            if (!err.message.includes('429') && !err.message.includes('503')) {
+                break; // Break if structural
+            }
+            
+            if (i < maxAttempts - 1) {
+                const backoffBase = Math.min(Math.pow(2, i) * 1000, 8000);
+                const delayMs = backoffBase + Math.random() * 500;
+                console.log(`Waiting ${Math.round(delayMs)}ms before Groq retry...`);
+                await new Promise((res) => setTimeout(res, delayMs));
+            }
+        }
+    }
+  }
+
+  throw lastError || new Error('All AI providers failed');
 }
 
 /**
@@ -101,7 +170,7 @@ export async function groqCompletion(prompt: string): Promise<string> {
       maxOutputTokens: 1024,
     });
   } catch (error) {
-    console.error('OpenAI API Error:', error);
+    console.error('AI Completion Error:', error);
     throw new Error('Failed to generate AI response');
   }
 }
@@ -117,10 +186,10 @@ export async function groqQuizCompletion(prompt: string): Promise<string> {
       systemInstruction:
         'You are a quiz generation engine. You ONLY output valid JSON arrays. No markdown, no commentary, no wrapping.',
       temperature: 0.8,
-      maxOutputTokens: 4096,
+      maxOutputTokens: 8192,
     });
   } catch (error) {
-    console.error('OpenAI Quiz Generation Error:', error);
+    console.error('Quiz Generation Error:', error);
     throw new Error('Failed to generate quiz');
   }
 }
@@ -137,7 +206,7 @@ export async function groqSummaryCompletion(prompt: string): Promise<string> {
       maxOutputTokens: 512,
     });
   } catch (error) {
-    console.error('OpenAI Summary Error:', error);
+    console.error('Summary Completion Error:', error);
     throw new Error('Failed to generate summary');
   }
 }

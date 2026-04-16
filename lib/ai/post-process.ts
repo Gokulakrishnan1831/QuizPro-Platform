@@ -279,9 +279,45 @@ export function postProcessQuestions(
             if (typeof q.valueTolerance !== 'number') q.valueTolerance = 0.01;
         }
 
+        if (type === 'SCENARIO_MCQ') {
+            q.skill = 'DATA_ANALYTICS';
+            if (typeof q.scenario !== 'string' || q.scenario.trim().length === 0) {
+                q.scenario = q.content ?? '';
+            }
+            if (!Array.isArray(q.options)) q.options = [];
+            const scenarioOptions = q.options
+                .filter((opt: any) => typeof opt === 'string')
+                .map((opt: string) => opt.trim())
+                .filter((opt: string) => opt.length > 0);
+            const scenarioDeduped = Array.from(new Set(scenarioOptions)).slice(0, 4);
+            while (scenarioDeduped.length < 4) scenarioDeduped.push(`Option ${String.fromCharCode(65 + scenarioDeduped.length)}`);
+            q.options = scenarioDeduped;
+
+            const scenarioCorrect = typeof q.correctAnswer === 'string' ? q.correctAnswer.trim() : '';
+            q.correctAnswer = q.options.includes(scenarioCorrect) ? scenarioCorrect : q.options[0];
+            q.multipleCorrect = false;
+        }
+
+        if (type === 'SCENARIO_SUBJECTIVE') {
+            q.skill = 'DATA_ANALYTICS';
+            if (typeof q.scenario !== 'string' || q.scenario.trim().length === 0) {
+                q.scenario = q.content ?? '';
+            }
+            if (typeof q.rubric !== 'string' || q.rubric.trim().length === 0) {
+                q.rubric = 'Evaluate based on correctness, completeness, and practical reasoning.';
+            }
+            if (typeof q.sampleAnswer !== 'string' || q.sampleAnswer.trim().length === 0) {
+                q.sampleAnswer = q.solution ?? '';
+            }
+            if (typeof q.maxWords !== 'number' || q.maxWords <= 0) {
+                q.maxWords = 200;
+            }
+        }
+
         return q;
     });
 }
+
 
 /**
  * Extract simple sampleData from setupSQL for display purposes.

@@ -22,6 +22,7 @@ interface Stats {
   totalQuestions: number;
   totalAttempts: number;
   estimatedRevenue: number;
+  avgProfileCompletion?: number;
 }
 
 interface RecentUser {
@@ -31,6 +32,9 @@ interface RecentUser {
   persona: string | null;
   subscriptionTier: string;
   quizzesRemaining: number;
+  profilePhotoUrl?: string | null;
+  headline?: string | null;
+  profileCompletionPct?: number;
   createdAt: string;
 }
 
@@ -122,6 +126,13 @@ export default function AdminOverviewPage() {
       color: '#f59e0b',
       bg: 'rgba(245,158,11,0.08)',
     },
+    {
+      label: 'Avg. Profile',
+      value: `${stats?.avgProfileCompletion ?? 0}%`,
+      icon: <TrendingUp size={24} color="#a855f7" />,
+      color: '#a855f7',
+      bg: 'rgba(168,85,247,0.08)',
+    },
   ];
 
   return (
@@ -138,6 +149,7 @@ export default function AdminOverviewPage() {
 
       {/* KPI Grid */}
       <div
+        className="max-sm:!grid-cols-1 max-md:!grid-cols-2"
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
@@ -182,7 +194,7 @@ export default function AdminOverviewPage() {
       </div>
 
       {/* Two-column layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem' }}>
+      <div className="max-lg:!grid-cols-1" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem' }}>
         {/* Recent Users Table */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -208,7 +220,7 @@ export default function AdminOverviewPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
               <thead>
                 <tr>
-                  {['User', 'Persona', 'Tier', 'Quizzes Left', 'Joined'].map((h) => (
+                  {['User', 'Headline', 'Persona', 'Tier', 'Profile %', 'Joined'].map((h) => (
                     <th
                       key={h}
                       style={{
@@ -230,8 +242,7 @@ export default function AdminOverviewPage() {
               <tbody>
                 {recentUsers.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={5}
+                    <td colSpan={6}
                       style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}
                     >
                       No users yet
@@ -247,12 +258,29 @@ export default function AdminOverviewPage() {
                       }}
                     >
                       <td style={{ padding: '10px 12px' }}>
-                        <div style={{ fontWeight: '600', color: 'white' }}>
-                          {u.name || '—'}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{
+                            width: '30px', height: '30px', borderRadius: '50%', flexShrink: 0,
+                            background: u.profilePhotoUrl
+                              ? `url(${u.profilePhotoUrl}) center/cover`
+                              : 'linear-gradient(135deg, #6366f1, #06b6d4)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '0.75rem', fontWeight: '800', color: 'white',
+                          }}>
+                            {!u.profilePhotoUrl && (u.name ?? 'U').charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: '600', color: 'white' }}>
+                              {u.name || '—'}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                              {u.email}
+                            </div>
+                          </div>
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                          {u.email}
-                        </div>
+                      </td>
+                      <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '0.82rem', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {u.headline || '—'}
                       </td>
                       <td style={{ padding: '10px 12px', color: '#a5b4fc' }}>
                         {u.persona ?? '—'}
@@ -276,11 +304,15 @@ export default function AdminOverviewPage() {
                         style={{
                           padding: '10px 12px',
                           textAlign: 'center',
-                          color: u.quizzesRemaining === 0 ? '#ef4444' : '#10b981',
-                          fontWeight: '700',
                         }}
                       >
-                        {u.quizzesRemaining}
+                        <span style={{
+                          color: (u.profileCompletionPct ?? 0) >= 80 ? '#10b981' : (u.profileCompletionPct ?? 0) >= 50 ? '#f59e0b' : '#ef4444',
+                          fontWeight: '700',
+                          fontSize: '0.82rem',
+                        }}>
+                          {u.profileCompletionPct ?? 0}%
+                        </span>
                       </td>
                       <td style={{ padding: '10px 12px', color: '#6b7280', fontSize: '0.78rem' }}>
                         {new Date(u.createdAt).toLocaleDateString('en-IN', {

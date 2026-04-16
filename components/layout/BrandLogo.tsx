@@ -1,43 +1,60 @@
-import { BRAND_ASSETS, BRAND_NAME } from '@/lib/branding';
+import { BRAND_NAME, BRAND_SLOGAN } from '@/lib/branding';
 
 type BrandLogoProps = {
-  iconSize?: number;
-  textSize?: string;
+  height?: number;
+  hideSloganOnMobile?: boolean;
+  showSlogan?: boolean;
 };
 
-export default function BrandLogo({
-  iconSize = 36,
-  textSize = '1.5rem',
-}: BrandLogoProps) {
+export default function BrandLogo({ height = 50, hideSloganOnMobile = true, showSlogan = true }: BrandLogoProps) {
   return (
-    <>
-      <span
-        role="img"
-        aria-label={`${BRAND_NAME} logo`}
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <img
+        src="/logo-1.png"
+        alt={`${BRAND_NAME} Logo`}
+        className="max-md:!h-8"
         style={{
-          display: 'inline-block',
-          width: `${iconSize}px`,
-          height: `${iconSize}px`,
-          borderRadius: '10px',
-          backgroundColor: '#0f0f23',
-          backgroundImage: `url(${BRAND_ASSETS.icon})`,
-          backgroundPosition: '52% 20%',
-          backgroundRepeat: 'no-repeat',
-          backgroundSize: '185%',
-          boxShadow: '0 10px 24px rgba(8, 15, 50, 0.35)',
-          flexShrink: 0,
+          height: `${height}px`,
+          width: 'auto',
+          objectFit: 'contain',
+          display: 'block',
         }}
+        draggable={false}
       />
-      <span
-        style={{
-          fontSize: textSize,
-          fontWeight: 800,
-          color: 'white',
-          letterSpacing: '-0.03em',
-        }}
-      >
-        {BRAND_NAME}
-      </span>
-    </>
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <span 
+          className="max-md:!text-[1.5rem]"
+          style={{ 
+            fontSize: `${height * 0.55}px`, 
+            fontWeight: 800, 
+            letterSpacing: '0.02em',
+            lineHeight: 1.1,
+            color: 'var(--text-primary)',
+            fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+          }}
+        >
+          Pr<span style={{ 
+            background: 'linear-gradient(135deg, #6366f1, #a855f7)', 
+            WebkitBackgroundClip: 'text', 
+            WebkitTextFillColor: 'transparent',
+            display: 'inline-block'
+          }}>e</span>plytics
+        </span>
+        {showSlogan && (
+          <span 
+            className={`${hideSloganOnMobile ? 'desktop-only' : ''} max-sm:!text-[0.6rem]`}
+            style={{ 
+              fontSize: `${height * 0.24}px`, 
+              color: 'var(--text-muted)',
+              fontWeight: 500,
+              whiteSpace: 'nowrap',
+              marginTop: '2px'
+            }}
+          >
+            {BRAND_SLOGAN}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
